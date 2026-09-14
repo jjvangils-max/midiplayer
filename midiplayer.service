@@ -1,0 +1,22 @@
+[Unit]
+Description=MIDI Player kiosk (touchscreen)
+After=graphical.target
+Wants=graphical.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/midiplayer
+Environment=DISPLAY=:0
+Environment=QT_QPA_PLATFORM=eglfs
+Environment=QT_QPA_EGLFS_PHYSICAL_WIDTH=217
+Environment=QT_QPA_EGLFS_PHYSICAL_HEIGHT=128
+Environment=QT_QPA_EGLFS_WIDTH=1024
+Environment=QT_QPA_EGLFS_HEIGHT=600
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+ExecStart=/usr/bin/python3 /home/pi/midiplayer/main.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical.target
