@@ -1,0 +1,112 @@
+"""English / French translations and runtime language switching."""
+
+_STRINGS = {
+    "en": {
+        "title": "MIDI Player",
+        "songs": "Songs",
+        "prev": "◀",
+        "next": "▶",
+        "page": "Page {p}/{n}",
+        "info": "Information",
+        "play": "PLAY",
+        "stop": "STOP",
+        "credits": "Credits: {n}",
+        "no_song_selected": "Select a song to see information.",
+        "no_songs": "No MIDI files found.",
+        "now_playing": "Now playing:",
+        "up_next": "Up next:",
+        "add_to_queue": "Add to queue",
+        "queue_empty": "—",
+        "waiting_startup": "Waiting for startup…",
+        "warmup": "Warming up ({s}s)",
+        "gap": "Next song in {s}s…",
+        "cooldown": "Idle — powering off in {s}s",
+        "insert_coin": "Insert a coin to play",
+        "playing": "Playing",
+        "paused": "Paused",
+        "stopped": "Stopped",
+        "relay_on": "Installation ON",
+        "relay_off": "Installation OFF",
+        "usb_detected": "USB device detected",
+        "usb_import_question": "Import MIDI files from this USB stick?",
+        "usb_import_yes": "Yes, import",
+        "usb_import_no": "No",
+        "usb_importing": "Importing… {n} files",
+        "usb_import_done": "Imported {n} MIDI files.",
+        "usb_no_files": "No MIDI files found on the USB stick.",
+        "midi_unknown": "Unknown",
+        "midi_title": "Title",
+        "midi_artist": "Artist",
+        "midi_copyright": "Copyright",
+        "midi_tempo": "Tempo",
+        "midi_length": "Length",
+        "midi_tracks": "Tracks",
+        "lang_label": "EN",
+        "stop_confirm": "Stop playback?",
+    },
+    "fr": {
+        "title": "Lecteur MIDI",
+        "songs": "Morceaux",
+        "prev": "◀",
+        "next": "▶",
+        "page": "Page {p}/{n}",
+        "info": "Informations",
+        "play": "LECTURE",
+        "stop": "ARRÊT",
+        "credits": "Crédits : {n}",
+        "no_song_selected": "Sélectionnez un morceau pour voir les informations.",
+        "no_songs": "Aucun fichier MIDI trouvé.",
+        "now_playing": "En cours :",
+        "up_next": "À suivre :",
+        "add_to_queue": "Ajouter à la file",
+        "queue_empty": "—",
+        "waiting_startup": "En attente de démarrage…",
+        "warmup": "Mise en route ({s}s)",
+        "gap": "Prochain morceau dans {s}s…",
+        "cooldown": "Veille — extinction dans {s}s",
+        "insert_coin": "Insérez une pièce pour jouer",
+        "playing": "Lecture",
+        "paused": "Pause",
+        "stopped": "Arrêté",
+        "relay_on": "Installation MARCHE",
+        "relay_off": "Installation ARRÊT",
+        "usb_detected": "Périphérique USB détecté",
+        "usb_import_question": "Importer les fichiers MIDI de cette clé USB ?",
+        "usb_import_yes": "Oui, importer",
+        "usb_import_no": "Non",
+        "usb_importing": "Importation… {n} fichiers",
+        "usb_import_done": "{n} fichiers MIDI importés.",
+        "usb_no_files": "Aucun fichier MIDI trouvé sur la clé USB.",
+        "midi_unknown": "Inconnu",
+        "midi_title": "Titre",
+        "midi_artist": "Artiste",
+        "midi_copyright": "Copyright",
+        "midi_tempo": "Tempo",
+        "midi_length": "Durée",
+        "midi_tracks": "Pistes",
+        "lang_label": "FR",
+        "stop_confirm": "Arrêter la lecture ?",
+    },
+}
+
+_current = "en"
+
+
+def set_language(lang):
+    global _current
+    if lang in _STRINGS:
+        _current = lang
+
+
+def get_language():
+    return _current
+
+
+def t(key, **fmt):
+    s = _STRINGS.get(_current, _STRINGS["en"]).get(key, key)
+    if fmt:
+        try:
+            return s.format(**fmt)
+        except (KeyError, IndexError):
+            return s
+    return s
