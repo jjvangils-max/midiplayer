@@ -112,7 +112,7 @@ def main():
     usb_mon.start()
 
     # install helper method on win to ask USB import (queued call target)
-    win.usb_import_answer.connect(lambda yes, mount: (
+    win.signals.usb_import_answer.connect(lambda yes, mount: (
         threading.Thread(
             target=lambda: usb_import.import_midi_from_usb(mount, signals=_UsbWiring()),
             daemon=True,
