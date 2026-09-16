@@ -31,9 +31,7 @@ class Wiring:
     def on_coin(self, count):
         self.win.update_credits(count)
     def on_relay(self, on):
-        self.win.update_status(
-            i18n.t("relay_on") if on else i18n.t("relay_off")
-        )
+        self.win.set_status_key("relay_on" if on else "relay_off")
 
     # state machine signals
     def on_state_change(self, state, **info):
@@ -41,8 +39,8 @@ class Wiring:
             self.win.set_playing(True)
         elif state in ("stopped", "finished", "error", "idle"):
             self.win.set_playing(False)
-    def on_status(self, text):
-        self.win.update_status(text)
+    def on_status(self, key, **kwargs):
+        self.win.set_status_key(key, **kwargs)
     def on_now_playing(self, name):
         self.win.update_now_playing(name)
     def on_queue_change(self, queue):
@@ -55,9 +53,9 @@ class Wiring:
                                  Qt.QueuedConnection, Q_ARG(str, mount_path))
 
     def on_import_progress(self, n_total, n_done):
-        self.win.update_status(i18n.t("usb_importing", n=n_done))
+        self.win.set_status_key("usb_importing", n=n_done)
     def on_import_done(self, n):
-        self.win.update_status(i18n.t("usb_import_done", n=n))
+        self.win.set_status_key("usb_import_done", n=n)
         self.win.refresh_library()
     def on_import_error(self, msg):
         self.win.update_status(msg)
@@ -123,7 +121,7 @@ def main():
     # initial status
     win.update_credits(hw.credits)
     if hw.available():
-        win.update_status(i18n.t("insert_coin"))
+        win.set_status_key("insert_coin")
     else:
         win.update_status(i18n.t("insert_coin") + "  (GPIO mock)")
 

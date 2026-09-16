@@ -79,6 +79,8 @@ class MainWindow(QMainWindow):
         self.selected_index = -1
         self._now_name = ""
         self._queue_text = ""
+        self._status_key = "insert_coin"
+        self._status_kwargs = {}
         self._init_ui()
         self.refresh_library()
 
@@ -141,7 +143,7 @@ class MainWindow(QMainWindow):
             b.setCheckable(True)
             b.setFont(_btn_font(16))
             b.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-            b.setMinimumHeight(108)
+            b.setMinimumHeight(88)
             b.clicked.connect(lambda _, idx=i: self._select_visible(idx))
             self.song_grid.addWidget(b, r, c)
             self.song_buttons.append(b)
@@ -151,17 +153,17 @@ class MainWindow(QMainWindow):
         nav.setSpacing(6)
         self.prev_btn = QPushButton(i18n.t("prev"))
         self.prev_btn.setObjectName("navBtn")
-        self.prev_btn.setFont(_btn_font(22))
-        self.prev_btn.setFixedHeight(70)
+        self.prev_btn.setFont(_btn_font(20))
+        self.prev_btn.setFixedHeight(56)
         self.prev_btn.clicked.connect(self._prev_page)
         self.page_lbl = QLabel("1/1")
         self.page_lbl.setObjectName("section")
         self.page_lbl.setAlignment(Qt.AlignCenter)
-        self.page_lbl.setFont(_btn_font(16))
+        self.page_lbl.setFont(_btn_font(14))
         self.next_btn = QPushButton(i18n.t("next"))
         self.next_btn.setObjectName("navBtn")
-        self.next_btn.setFont(_btn_font(22))
-        self.next_btn.setFixedHeight(70)
+        self.next_btn.setFont(_btn_font(20))
+        self.next_btn.setFixedHeight(56)
         self.next_btn.clicked.connect(self._next_page)
         nav.addWidget(self.prev_btn)
         nav.addWidget(self.page_lbl, 1)
@@ -332,6 +334,8 @@ class MainWindow(QMainWindow):
         self._update_credits(self.hw.credits if self.hw else 0)
         self._render_now()
         self._render_next()
+        if self._status_key is not None:
+            self._render_status()
         self.signals.language_changed.emit(lang)
 
     # ---- slots from state machine / hardware (thread-safe via signals) ----
@@ -342,6 +346,20 @@ class MainWindow(QMainWindow):
     def update_status(self, text):
         QMetaObject.invokeMethod(self, "_slot_status", Qt.QueuedConnection,
                                  Q_ARG(str, text))
+
+    def set_status_key(self, key, **kwargs):
+        # may be called from a background thread; marshal to the GUI thread
+        self._status_key = key
+        self._status_kwargs = kwargs
+        QMetaObject.invokeMethod(self, "_slot_status_key", Qt.QueuedConnection)
+
+    @Slot()
+    def _slot_status_key(self):
+        self._render_status()
+
+    def _render_status(self):
+        text = i18n.t(self._status_key, **self._status_kwargs)
+        self.status_lbl.setText(text)
 
     def update_now_playing(self, name):
         QMetaObject.invokeMethod(self, "_slot_now", Qt.QueuedConnection,
@@ -363,6 +381,10 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def _slot_status(self, text):
+        # plain-text status (errors): clear the keyed status so a language
+        # switch does not overwrite it with a stale translated key.
+        self._status_key = None
+        self._status_kwargs = {}
         self.status_lbl.setText(text)
 
     @Slot(str)
