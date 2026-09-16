@@ -62,5 +62,5 @@ MIDI_NUM_OUTS = 2
 TEMPO_SCALE = 1.0     # 1.0 = play at the tempo stored in the file
 
 # --- Languages ------------------------------------------------------------
-DEFAULT_LANG = "en"
+DEFAULT_LANG = "fr"
 LANGUAGES = ("en", "fr")
