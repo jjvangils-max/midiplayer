@@ -63,12 +63,24 @@ class Song:
         self.meta_loaded = True
 
 
+def _is_midi_file(p):
+    """True if p is a MIDI file we want to use, skipping macOS/hidden junk.
+
+    Skips dotfiles and the AppleDouble metadata files (._*) that macOS writes
+    on FAT/exFAT USB sticks; those are not real MIDI files.
+    """
+    name = p.name
+    if name.startswith(".") or name.startswith("._"):
+        return False
+    return p.suffix.lower() in (".mid", ".midi")
+
+
 def scan_midi(folder=None):
     folder = Path(folder or config.MIDI_DIR)
     songs = []
     if folder.is_dir():
         for p in folder.rglob("*"):
-            if p.is_file() and p.suffix.lower() in (".mid", ".midi"):
+            if p.is_file() and _is_midi_file(p):
                 songs.append(Song(path=str(p), name=p.stem))
     songs.sort(key=lambda s: s.name.lower())
     return songs
@@ -78,6 +90,6 @@ def find_midi_on_usb(root):
     root = Path(root)
     out = []
     for p in root.rglob("*"):
-        if p.is_file() and p.suffix.lower() in (".mid", ".midi"):
+        if p.is_file() and _is_midi_file(p):
             out.append(str(p))
     return out
