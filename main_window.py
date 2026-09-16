@@ -231,6 +231,11 @@ class MainWindow(QMainWindow):
 
     # ---- library / pages -------------------------------------------------
     def refresh_library(self):
+        # may be called from a background thread (USB import); marshal to GUI
+        QMetaObject.invokeMethod(self, "_slot_refresh_library", Qt.QueuedConnection)
+
+    @Slot()
+    def _slot_refresh_library(self):
         self.songs = midi_library.scan_midi()
         self.page = 0
         self._render_page()
