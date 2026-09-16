@@ -15,7 +15,6 @@ import threading
 import time
 
 import config
-import i18n
 
 
 class StateSignals:
@@ -67,7 +66,7 @@ class PlayerStateMachine(threading.Thread):
         """User pressed PLAY for song_path. Requires a credit."""
         with self._lock:
             if not self.hw.consume_credit():
-                self.signals.on_status(i18n.t("insert_coin"))
+                self.signals.on_status("insert_coin")
                 return False
             self._queue.insert(0, song_path)
         self._wake.set()
@@ -108,7 +107,7 @@ class PlayerStateMachine(threading.Thread):
                 self.hw.relay_off()
                 self._set_state(STATE_IDLE)
             else:
-                self.signals.on_status(i18n.t("cooldown", s=int(remaining)))
+                self.signals.on_status("cooldown", s=int(remaining))
             return
 
         # If playing, wait for finish
@@ -125,7 +124,7 @@ class PlayerStateMachine(threading.Thread):
             if remaining <= 0:
                 self._advance()
             else:
-                self.signals.on_status(i18n.t("gap", s=int(remaining)))
+                self.signals.on_status("gap", s=int(remaining))
             return
 
         if self.state == STATE_WARMUP:
@@ -133,7 +132,7 @@ class PlayerStateMachine(threading.Thread):
             if remaining <= 0:
                 self._start_playing_first()
             else:
-                self.signals.on_status(i18n.t("waiting_startup"))
+                self.signals.on_status("waiting_startup")
             return
 
         # IDLE: is there something to play with credit already consumed?
