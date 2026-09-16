@@ -56,18 +56,19 @@ class CoinReader:
         self.hw.signals.on_coin(count)
         if value_code is not None:
             try:
-                cents = int(value_code) * 10   # "10" -> 100 ct = 1 EUR
+                cents = int(value_code) * config.COIN_VALUE_SCALE
                 self.hw.signals.on_coin_value(cents)
             except ValueError:
                 pass
 
 
 class SerialCoinReader(CoinReader, threading.Thread):
-    """JY-616 serial acceptor.
+    """JY-616 serial acceptor (RS232-TTL).
 
-    The device emits the prefix (default "4858") followed by a fixed number of
-    value digits (default 2, e.g. "10"=1EUR) for each accepted coin. We buffer
-    incoming bytes and emit one credit whenever a complete message is seen.
+    The device emits a fixed header (default 0x48 0x45 = "HE") followed by one
+    value byte for each accepted coin. We buffer incoming bytes and emit one
+    credit whenever a complete frame is seen. The value byte (e.g. 0x0A = 1 EUR)
+    is scaled by COIN_VALUE_SCALE and reported via on_coin_value.
     """
 
     def __init__(self, hardware):
@@ -102,8 +103,8 @@ class SerialCoinReader(CoinReader, threading.Thread):
 
     def run(self):
         buf = b""
-        prefix = config.COIN_SERIAL_PREFIX.encode("ascii", "ignore")
-        ndig = config.COIN_VALUE_DIGITS
+        prefix = config.COIN_SERIAL_PREFIX
+        nval = config.COIN_SERIAL_VALUE_BYTES
         while not self._stop.is_set() and self._ser is not None:
             try:
                 chunk = self._ser.read(64)
@@ -120,12 +121,14 @@ class SerialCoinReader(CoinReader, threading.Thread):
                     buf = buf[-(len(prefix) - 1):] if len(buf) >= len(prefix) else buf
                     break
                 msg_start = idx + len(prefix)
-                msg_end = msg_start + ndig
+                msg_end = msg_start + nval
                 if len(buf) < msg_end:
                     # wait for more bytes
                     buf = buf[idx:]
                     break
-                value_code = buf[msg_start:msg_end].decode("ascii", "ignore")
+                # value is a single binary byte (0x0A = 1 EUR, 0x14 = 2 EUR, ...)
+                value_byte = buf[msg_start:msg_end][0]
+                value_code = str(value_byte)
                 self._report_coin(value_code)
                 buf = buf[msg_end:]
 
