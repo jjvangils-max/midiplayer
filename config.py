@@ -24,16 +24,25 @@ GAP_TIME = 15           # pause between songs
 COOLDOWN_TIME = 300     # keep installation on this long after the last song, then relay off
 
 # --- Coin mechanism: JY-616 on serial -------------------------------------
-# The JY-616 outputs on a serial line at 115200 baud. Each accepted coin sends
-# a fixed string "4858" followed by a 2-digit value code:
-#   "485810" = 1 euro, "485820" = 2 euro, "485805" = 0.50 euro, ...
-# The value code is the coin value in units of 0.10 EUR ("xx" = value * 10 ct).
-# Each line/feed equals one playable song (one credit).
+# The JY-616 talks RS232-TTL (NOT a contact pulse). Each accepted coin sends a
+# 3-byte binary frame on the serial line:
+#   0x48 0x45 0xXX      (header bytes "HE" + one value byte)
+# The value byte is the coin value in whole euros:
+#   0x0A = 1 EUR, 0x14 = 2 EUR, 0x05 = 0.50 EUR, ...
+# One complete frame equals one credit (one playable song); the value byte is
+# scaled by COIN_VALUE_SCALE and reported via on_coin_value (euro cents).
+#
+# On a Raspberry Pi connect the JY-616 TX line to the Pi's UART RX (BCM 15,
+# /dev/serial0) through an optocoupler that shifts the acceptor voltage to the
+# Pi's 3V3 logic level. Keep the console/getty off that UART (raspi-config ->
+# Interface Options -> Serial Port -> no login shell). If you use a USB-RS232
+# adapter instead, the port is /dev/ttyUSB0.
 COIN_SOURCE = "serial"        # "serial" (JY-616) or "gpio" (legacy pulse)
-COIN_SERIAL_PORT = "/dev/ttyUSB0"   # JY-616 serial adapter; change if it is ttyAMA0
-COIN_SERIAL_BAUD = 115200
-COIN_SERIAL_PREFIX = "4858"   # header that precedes every coin message
-COIN_VALUE_DIGITS = 2          # number of digits after the prefix
+COIN_SERIAL_PORT = "/dev/serial0"  # Pi UART RX via optocoupler; /dev/ttyUSB0 for USB
+COIN_SERIAL_BAUD = 9600       # JY-616 RS232-TTL baud rate
+COIN_SERIAL_PREFIX = b"\x48\x45"  # 2-byte header (0x48 0x45 = "HE")
+COIN_SERIAL_VALUE_BYTES = 1   # one value byte follows the header
+COIN_VALUE_SCALE = 10        # value byte * 10 = euro cents (0x0A -> 100 ct)
 
 # --- Relay (motor / installation power) via optocoupler -------------------
 # Driven through an optocoupler: the Pi GPIO drives the optocoupler LED side.
