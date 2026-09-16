@@ -77,6 +77,8 @@ class MainWindow(QMainWindow):
         self.songs = []
         self.page = 0
         self.selected_index = -1
+        self._now_name = ""
+        self._queue_text = ""
         self._init_ui()
         self.refresh_library()
 
@@ -328,6 +330,8 @@ class MainWindow(QMainWindow):
         self._render_page()
         self._update_info()
         self._update_credits(self.hw.credits if self.hw else 0)
+        self._render_now()
+        self._render_next()
         self.signals.language_changed.emit(lang)
 
     # ---- slots from state machine / hardware (thread-safe via signals) ----
@@ -363,15 +367,23 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def _slot_now(self, name):
-        if name:
-            self.now_lbl.setText(i18n.t("now_playing") + " " + name)
-        else:
-            self.now_lbl.setText(i18n.t("now_playing") + " " + i18n.t("queue_empty"))
+        self._now_name = name
+        self._render_now()
 
     @Slot(str)
     def _slot_queue(self, text):
-        if text:
-            self.next_lbl.setText(i18n.t("up_next") + " " + text)
+        self._queue_text = text
+        self._render_next()
+
+    def _render_now(self):
+        if self._now_name:
+            self.now_lbl.setText(i18n.t("now_playing") + " " + self._now_name)
+        else:
+            self.now_lbl.setText(i18n.t("now_playing") + " " + i18n.t("queue_empty"))
+
+    def _render_next(self):
+        if self._queue_text:
+            self.next_lbl.setText(i18n.t("up_next") + " " + self._queue_text)
         else:
             self.next_lbl.setText(i18n.t("up_next") + " " + i18n.t("queue_empty"))
 
