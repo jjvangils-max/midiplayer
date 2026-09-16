@@ -69,7 +69,7 @@ def main():
 
     app = build_app(sys.argv)
     win = MainWindow()
-    win.show()
+    win.showFullScreen()
 
     # Hardware (GPIO or mock)
     hw = hw_mod.Hardware()
