@@ -47,6 +47,8 @@ COIN_GPIO = 23                # BCM pin reading the COIN output
 COIN_PULL_UP = True           # internal pull-up; NO switch pulls the pin LOW
 COIN_ACTIVE_HIGH = False      # NO switch to GND -> pulse is LOW-true
 COIN_DEBOUNCE = 0.02          # gpiozero bounce_time (s) to filter contact bounce
+COIN_MIN_PULSE = 0.008        # min pulse duration (s) to count; shorter spikes
+                             # (cable touch / noise) are ignored
 COIN_BURST_WINDOW = 0.40      # seconds to group one coin's pulses (gap > window)
 COIN_PULSE_VALUE = {          # pulses -> euro cents for the accepted coin
     1: 5,

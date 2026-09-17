@@ -220,9 +220,11 @@ class GpioCoinReader(CoinReader, threading.Thread):
         last_pulse_time = 0.0
         armed = True            # ready to count a falling edge (pin at rest)
         high_since = None       # when the pin first returned to rest after a pulse
+        pulse_start = None      # when the current pulse edge began
         prev = None             # previous pulse-state sample
-        log.info("GpioCoinReader: polling gestart (rust is_active=%s)",
-                 button.is_active)
+        min_pulse = config.COIN_MIN_PULSE       # min duration to count
+        log.info("GpioCoinReader: polling gestart (rust is_active=%s, min_pulse=%.0fms)",
+                 button.is_active, min_pulse * 1000)
         while not self._stop.is_set():
             time.sleep(poll)
             try:
@@ -242,18 +244,29 @@ class GpioCoinReader(CoinReader, threading.Thread):
                 armed = not pulse_now
                 continue
             if armed and pulse_now and not prev:
-                # falling edge into the pulse state -> one pulse
-                pulses += 1
-                last_pulse_time = now
+                # falling edge into the pulse state -> start timing the pulse
+                pulse_start = now
                 armed = False
                 high_since = None
-                log.info("GpioCoinReader: puls %d gedetecteerd", pulses)
             elif not armed:
                 # wait for the pin to return to rest and stay there (debounce)
                 if not pulse_now:
                     if high_since is None:
                         high_since = now
                     elif now - high_since >= debounce:
+                        # Pin settled back to rest. Only count the pulse if it
+                        # lasted at least min_pulse; short spikes (cable touch /
+                        # noise from the weak internal pull-up) are ignored.
+                        if pulse_start is not None and now - pulse_start >= min_pulse:
+                            pulses += 1
+                            last_pulse_time = now
+                            log.info("GpioCoinReader: puls %d gedetecteerd (%.0fms)",
+                                     pulses, (now - pulse_start) * 1000)
+                        else:
+                            log.info("GpioCoinReader: korte puls genegeerd (%.0fms < %.0fms)",
+                                     (now - pulse_start) * 1000 if pulse_start else 0,
+                                     min_pulse * 1000)
+                        pulse_start = None
                         armed = True
                 else:
                     high_since = None
