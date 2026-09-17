@@ -17,12 +17,25 @@ import config
 
 log = logging.getLogger("midiplayer.hardware")
 
+# Import gpiozero's Button/OutputDevice independently of the LGPIOFactory:
+# lgpio (Bookworm) is preferred but optional; if it is missing, gpiozero falls
+# back to another factory and GPIO still works. Keeping them in one try would
+# disable all GPIO just because the lgpio backend is absent.
 try:
     from gpiozero import Button, OutputDevice
-    from gpiozero.pins.lgpio import LGPIOFactory  # noqa: F401  (preferred on Bookworm)
     _HAS_GPIO = True
-except Exception:
+except Exception as _e:
     _HAS_GPIO = False
+    log.error("gpiozero import faalt (Button/OutputDevice niet beschikbaar): %r", _e)
+
+try:
+    from gpiozero.pins.lgpio import LGPIOFactory  # noqa: F401  (preferred on Bookworm)
+    from gpiozero import Device
+    if Device.pin_factory is None:
+        Device.pin_factory = LGPIOFactory()
+        log.info("gpiozero pin_factory ingesteld op LGPIOFactory")
+except Exception as _e:
+    log.warning("LGPIOFactory niet beschikbaar (lgpio ontbreekt?); gpiozero gebruikt een fallback-factory: %r", _e)
 
 try:
     import serial  # pyserial
