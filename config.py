@@ -23,23 +23,36 @@ WARMUP_TIME = 45        # hold relay on, show "Waiting for startup" before first
 GAP_TIME = 15           # pause between songs
 COOLDOWN_TIME = 300     # keep installation on this long after the last song, then relay off
 
-# --- Coin mechanism: JY-616 on serial -------------------------------------
-# The JY-616 talks RS232-TTL (NOT a contact pulse). Each accepted coin sends a
-# 3-byte binary frame on the serial line:
-#   0x48 0x45 0xXX      (header bytes "HE" + one value byte)
-# The value byte is the coin value in whole euros:
-#   0x0A = 1 EUR, 0x14 = 2 EUR, 0x05 = 0.50 EUR, ...
-# One complete frame equals one credit (one playable song); the value byte is
-# scaled by COIN_VALUE_SCALE and reported via on_coin_value (euro cents).
+# --- Coin mechanism: JY-616 on a GPIO input (NO contact, pull-up) ----------
+# The JY-616 COIN output is a small switch (set to NO = normally open): in
+# rest it is open, and per accepted coin it closes briefly to GND. This is an
+# open-collector-style output, NOT a real RS-232/TTL logic signal.
 #
-# On a Raspberry Pi connect the JY-616 TX line to the Pi's UART RX (BCM 15,
-# /dev/serial0) through an optocoupler that shifts the acceptor voltage to the
-# Pi's 3V3 logic level. Keep the console/getty off that UART (raspi-config ->
-# Interface Options -> Serial Port -> no login shell). If you use a USB-RS232
-# adapter instead, the port is /dev/ttyUSB0.
-COIN_SOURCE = "serial"        # "serial" (JY-616) or "gpio" (legacy pulse)
-COIN_SERIAL_PORT = "/dev/serial0"  # Pi UART RX via optocoupler; /dev/ttyUSB0 for USB
-COIN_SERIAL_BAUD = 9600       # JY-616 RS232-TTL baud rate
+# Read it on a Raspberry Pi GPIO with the INTERNAL PULL-UP enabled:
+#   - COIN (e.g. white wire) -> GPIO (default BCM 23)
+#   - GND of the acceptor <-> GND of the Pi (must be connected)
+#   - pull_up = True  -> the Pi keeps the pin HIGH in rest (3V3 via pull-up)
+#   - active_high = False -> each coin pulls the pin LOW (NO switch to GND)
+#   - one pulse = one credit = one song (COIN_PULSES_PER_CREDIT = 1)
+#
+# If, after measuring, your unit really drives 5V or 12V on COIN, do NOT wire
+# that directly to a GPIO: use a voltage divider or optocoupler to bring it to
+# 3V3. See README for divider values. The GND of the acceptor and the Pi must
+# always be connected; the acceptor supply must never reach a GPIO directly.
+COIN_SOURCE = "gpio"          # "gpio" (JY-616 NO contact) or "serial"
+COIN_GPIO = 23                # BCM pin reading the COIN output
+COIN_PULL_UP = True           # internal pull-up; NO switch pulls the pin LOW
+COIN_ACTIVE_HIGH = False      # NO switch to GND -> pulse is LOW-true
+COIN_DEBOUNCE = 0.02          # gpiozero bounce_time (s) to filter contact bounce
+COIN_BURST_WINDOW = 0.20      # seconds to group rapid pulses into one coin
+COIN_PULSES_PER_CREDIT = 1    # pulses counted for one credit (one song)
+
+# --- Coin mechanism: JY-616 on serial (alternative) -----------------------
+# If your JY-616 variant really emits a serial frame (rare for the 616 family),
+# set COIN_SOURCE = "serial" and use these. The device sends a 3-byte binary
+# frame 0x48 0x45 0xXX (0x0A = 1 EUR) on the serial line at 9600 baud.
+COIN_SERIAL_PORT = "/dev/serial0"  # Pi UART RX; /dev/ttyUSB0 for a USB adapter
+COIN_SERIAL_BAUD = 9600       # JY-616 serial baud rate
 COIN_SERIAL_PREFIX = b"\x48\x45"  # 2-byte header (0x48 0x45 = "HE")
 COIN_SERIAL_VALUE_BYTES = 1   # one value byte follows the header
 COIN_VALUE_SCALE = 10        # value byte * 10 = euro cents (0x0A -> 100 ct)

@@ -1,8 +1,8 @@
 """Hardware layer: relay output + credit counting.
 
 Coin input is handled by a pluggable "coin reader":
-  * SerialCoinReader  -> JY-616 acceptor on a serial line (115200 baud, "4858xx")
-  * GpioCoinReader     -> legacy pulse on a GPIO pin
+  * GpioCoinReader    -> JY-616 NO contact on a GPIO pin (pull-up, count pulses)
+  * SerialCoinReader  -> JY-616 serial variant on a serial line (9600 baud)
   * Mock (no reader)  -> credits added programmatically (dev/test)
 
 Falls back gracefully (no-op) when gpiozero / serial ports are unavailable so
@@ -10,6 +10,7 @@ the GUI still runs on a development machine. The interface stays identical.
 """
 
 import threading
+import time
 
 import config
 
@@ -133,12 +134,23 @@ class SerialCoinReader(CoinReader, threading.Thread):
                 buf = buf[msg_end:]
 
 
-class GpioCoinReader(CoinReader):
-    """Legacy: coin acceptor that pulses a GPIO pin."""
+class GpioCoinReader(CoinReader, threading.Thread):
+    """JY-616 acceptor on a GPIO input (NO contact, open-collector).
+
+    The COIN output is a switch set to NO: in rest it is open (pin kept HIGH by
+    the internal pull-up), and per accepted coin it closes briefly to GND, so
+    each coin is a short LOW pulse. We count pulses over a short burst window
+    (COIN_BURST_WINDOW) and convert them to credits with COIN_PULSES_PER_CREDIT:
+        credits += round(burst_pulses / COIN_PULSES_PER_CREDIT)
+    There is no coin value, so on_coin_value is not reported.
+    """
 
     def __init__(self, hardware):
-        super().__init__(hardware)
+        CoinReader.__init__(self, hardware)
+        threading.Thread.__init__(self, daemon=True)
         self._button = None
+        self._pulse_q = []           # timestamps of pulses in the current burst
+        self._wake = threading.Event()
 
     def start(self):
         if not _HAS_GPIO:
@@ -149,15 +161,17 @@ class GpioCoinReader(CoinReader):
                 pull_up=config.COIN_PULL_UP,
                 bounce_time=config.COIN_DEBOUNCE,
             )
-            if config.COIN_ACTIVE_HIGH:
-                self._button.when_activated = lambda: self._report_coin()
-            else:
-                self._button.when_deactivated = lambda: self._report_coin()
+            # NO switch to GND: the pulse pulls the pin LOW, so it is LOW-true.
+            self._button.when_activated = self._on_pulse if config.COIN_ACTIVE_HIGH else None
+            self._button.when_deactivated = self._on_pulse if not config.COIN_ACTIVE_HIGH else None
         except Exception:
             self._button = None
+            return
+        threading.Thread.start(self)
 
     def stop(self):
         CoinReader.stop(self)
+        self._wake.set()
         if self._button is not None:
             try:
                 self._button.close()
@@ -166,6 +180,38 @@ class GpioCoinReader(CoinReader):
 
     def available(self):
         return self._button is not None
+
+    def _on_pulse(self):
+        """Called from gpiozero's pin thread; just records + wakes the worker."""
+        with self.hw._lock:
+            self._pulse_q.append(time.monotonic())
+        self._wake.set()
+
+    def run(self):
+        window = config.COIN_BURST_WINDOW
+        per_credit = config.COIN_PULSES_PER_CREDIT or 1
+        margin = 0.05
+        poll = max(0.02, window / 5.0)
+        while not self._stop.is_set():
+            self._wake.wait(timeout=poll)
+            self._wake.clear()
+            if self._stop.is_set():
+                break
+            with self.hw._lock:
+                if not self._pulse_q:
+                    continue
+                now = time.monotonic()
+                # pulses whose burst window has closed form a coin; keep the
+                # rest and wait for the window to settle.
+                burst = [t for t in self._pulse_q if now - t >= window - margin]
+                if not burst:
+                    continue
+                self._pulse_q = [t for t in self._pulse_q if now - t < window - margin]
+                pulses = len(burst)
+            credits = round(pulses / per_credit)
+            if credits > 0:
+                for _ in range(credits):
+                    self._report_coin()
 
 
 # ---------------------------------------------------------------------------
