@@ -183,9 +183,13 @@ class GpioCoinReader(CoinReader, threading.Thread):
                 pull_up=config.COIN_PULL_UP,
                 bounce_time=config.COIN_DEBOUNCE,
             )
-            # NO switch to GND: the pulse pulls the pin LOW, so it is LOW-true.
-            self._button.when_activated = self._on_pulse if config.COIN_ACTIVE_HIGH else None
-            self._button.when_deactivated = self._on_pulse if not config.COIN_ACTIVE_HIGH else None
+            # gpiozero with pull_up=True treats pin LOW as "activated" (pressed).
+            # COIN_ACTIVE_HIGH=False: the coin pulse pulls the pin LOW -> "activated".
+            # COIN_ACTIVE_HIGH=True: the coin pulse pulls the pin HIGH -> "deactivated".
+            if config.COIN_ACTIVE_HIGH:
+                self._button.when_deactivated = self._on_pulse
+            else:
+                self._button.when_activated = self._on_pulse
             log.info("GpioCoinReader: Button aangemaakt op BCM %s, reader-thread start", config.COIN_GPIO)
         except Exception as e:
             log.error("GpioCoinReader.start FAALT op BCM %s: %r", config.COIN_GPIO, e)
