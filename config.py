@@ -33,19 +33,30 @@ COOLDOWN_TIME = 300     # keep installation on this long after the last song, th
 #   - GND of the acceptor <-> GND of the Pi (must be connected)
 #   - pull_up = True  -> the Pi keeps the pin HIGH in rest (3V3 via pull-up)
 #   - active_high = False -> each coin pulls the pin LOW (NO switch to GND)
-#   - one pulse = one credit = one song (COIN_PULSES_PER_CREDIT = 1)
 #
-# If, after measuring, your unit really drives 5V or 12V on COIN, do NOT wire
-# that directly to a GPIO: use a voltage divider or optocoupler to bring it to
-# 3V3. See README for divider values. The GND of the acceptor and the Pi must
-# always be connected; the acceptor supply must never reach a GPIO directly.
+# The number of pulses per coin encodes the coin VALUE. The mapping below is
+# set on the JY-616 via its DIP switches / pulse-count table:
+#   1 pulse = 0.05 EUR, 2 = 0.10, 3 = 0.20, 4 = 0.50, 5 = 1.00, 6 = 2.00
+# One accepted coin produces one burst of N pulses; we look up its value and
+# add it to the balance in euro cents.
+#
+# Playing one song costs SONG_PRICE_CENTS (default 0.50 EUR). A 2 EUR coin
+# (6 pulses) adds 200 ct, so 4 songs can be queued/played.
 COIN_SOURCE = "gpio"          # "gpio" (JY-616 NO contact) or "serial"
 COIN_GPIO = 23                # BCM pin reading the COIN output
 COIN_PULL_UP = True           # internal pull-up; NO switch pulls the pin LOW
 COIN_ACTIVE_HIGH = False      # NO switch to GND -> pulse is LOW-true
 COIN_DEBOUNCE = 0.02          # gpiozero bounce_time (s) to filter contact bounce
-COIN_BURST_WINDOW = 0.20      # seconds to group rapid pulses into one coin
-COIN_PULSES_PER_CREDIT = 1    # pulses counted for one credit (one song)
+COIN_BURST_WINDOW = 0.40      # seconds to group one coin's pulses (gap > window)
+COIN_PULSE_VALUE = {          # pulses -> euro cents for the accepted coin
+    1: 5,
+    2: 10,
+    3: 20,
+    4: 50,
+    5: 100,
+    6: 200,
+}
+SONG_PRICE_CENTS = 50         # one song costs 0.50 EUR
 
 # --- Coin mechanism: JY-616 on serial (alternative) -----------------------
 # If your JY-616 variant really emits a serial frame (rare for the 616 family),

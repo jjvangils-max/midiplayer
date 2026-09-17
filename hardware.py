@@ -29,9 +29,9 @@ except Exception:
 
 
 class HardwareSignals:
-    def on_coin(self, count): pass        # new credit count
-    def on_relay(self, on): pass           # True=on, False=off
-    def on_coin_value(self, cents): pass  # value of the last coin in euro cents
+    def on_coin(self, balance_cents): pass  # new balance in euro cents
+    def on_relay(self, on): pass             # True=on, False=off
+    def on_coin_value(self, cents): pass    # value of the last coin in euro cents
 
 
 # ---------------------------------------------------------------------------
@@ -49,18 +49,19 @@ class CoinReader:
     def stop(self):
         self._stop.set()
 
-    def _report_coin(self, value_code=None):
-        """Register one credit. value_code is the JY-616 "xx" string if known."""
+    def _report_coin(self, cents=None):
+        """Register one accepted coin.
+
+        cents = the coin value in euro cents (from the pulse/value table).
+        Adds it to the balance and notifies the UI with the new balance.
+        """
+        value = cents or 0
         with self.hw._lock:
-            self.hw.credits += 1
-            count = self.hw.credits
-        self.hw.signals.on_coin(count)
-        if value_code is not None:
-            try:
-                cents = int(value_code) * config.COIN_VALUE_SCALE
-                self.hw.signals.on_coin_value(cents)
-            except ValueError:
-                pass
+            self.hw.balance_cents += value
+            balance = self.hw.balance_cents
+        self.hw.signals.on_coin(balance)
+        if value:
+            self.hw.signals.on_coin_value(value)
 
 
 class SerialCoinReader(CoinReader, threading.Thread):
@@ -129,8 +130,8 @@ class SerialCoinReader(CoinReader, threading.Thread):
                     break
                 # value is a single binary byte (0x0A = 1 EUR, 0x14 = 2 EUR, ...)
                 value_byte = buf[msg_start:msg_end][0]
-                value_code = str(value_byte)
-                self._report_coin(value_code)
+                cents = value_byte * config.COIN_VALUE_SCALE
+                self._report_coin(cents)
                 buf = buf[msg_end:]
 
 
@@ -138,11 +139,11 @@ class GpioCoinReader(CoinReader, threading.Thread):
     """JY-616 acceptor on a GPIO input (NO contact, open-collector).
 
     The COIN output is a switch set to NO: in rest it is open (pin kept HIGH by
-    the internal pull-up), and per accepted coin it closes briefly to GND, so
-    each coin is a short LOW pulse. We count pulses over a short burst window
-    (COIN_BURST_WINDOW) and convert them to credits with COIN_PULSES_PER_CREDIT:
-        credits += round(burst_pulses / COIN_PULSES_PER_CREDIT)
-    There is no coin value, so on_coin_value is not reported.
+    the internal pull-up), and per accepted coin it closes briefly to GND,
+    producing a burst of LOW pulses. The number of pulses encodes the coin
+    value (COIN_PULSE_VALUE). We count pulses over a short burst window
+    (COIN_BURST_WINDOW), look up the value, and add it to the euro balance.
+    The coin value is reported via on_coin_value.
     """
 
     def __init__(self, hardware):
@@ -189,7 +190,7 @@ class GpioCoinReader(CoinReader, threading.Thread):
 
     def run(self):
         window = config.COIN_BURST_WINDOW
-        per_credit = config.COIN_PULSES_PER_CREDIT or 1
+        value_table = config.COIN_PULSE_VALUE
         margin = 0.05
         poll = max(0.02, window / 5.0)
         while not self._stop.is_set():
@@ -208,10 +209,10 @@ class GpioCoinReader(CoinReader, threading.Thread):
                     continue
                 self._pulse_q = [t for t in self._pulse_q if now - t < window - margin]
                 pulses = len(burst)
-            credits = round(pulses / per_credit)
-            if credits > 0:
-                for _ in range(credits):
-                    self._report_coin()
+            # map the number of pulses to the coin value (euro cents).
+            cents = value_table.get(pulses)
+            if cents:
+                self._report_coin(cents)
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +221,7 @@ class GpioCoinReader(CoinReader, threading.Thread):
 class Hardware:
     def __init__(self, signals=None):
         self.signals = signals or HardwareSignals()
-        self.credits = 0
+        self.balance_cents = 0
         self._relay_on = False
         self._lock = threading.Lock()
         self._relay = None
@@ -252,28 +253,30 @@ class Hardware:
             self._coin_reader.start()
 
     # ---- coin -------------------------------------------------------------
-    def add_credits(self, n=1):
-        """Test hook: simulate coin(s) without hardware."""
+    def add_credits(self, cents=50):
+        """Test hook: simulate a coin (default 0.50 EUR) without hardware."""
         with self._lock:
-            self.credits += n
-            count = self.credits
-        self.signals.on_coin(count)
+            self.balance_cents += cents
+            balance = self.balance_cents
+        self.signals.on_coin(balance)
 
     def consume_credit(self):
+        """Try to charge one song. Returns True if the balance was enough."""
+        price = config.SONG_PRICE_CENTS
         with self._lock:
-            if self.credits > 0:
-                self.credits -= 1
-                count = self.credits
+            if self.balance_cents >= price:
+                self.balance_cents -= price
+                balance = self.balance_cents
                 return True
-            count = self.credits
-        self.signals.on_coin(count)
+            balance = self.balance_cents
+        self.signals.on_coin(balance)
         return False
 
-    def set_credits(self, n):
+    def set_credits(self, cents):
         with self._lock:
-            self.credits = max(0, n)
-            count = self.credits
-        self.signals.on_coin(count)
+            self.balance_cents = max(0, cents)
+            balance = self.balance_cents
+        self.signals.on_coin(balance)
 
     def coin_reader_available(self):
         return self._coin_reader is not None and getattr(self._coin_reader, "available", lambda: False)()
