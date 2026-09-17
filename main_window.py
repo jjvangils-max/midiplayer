@@ -88,6 +88,21 @@ class MainWindow(QMainWindow):
         import admin
         self._hold_detector = admin.CornerHoldDetector(
             self, lambda: admin.open_admin_flow(self))
+        # Periodically refresh the info panel so metadata filled by the
+        # background preload appears without re-parsing on the GUI thread.
+        from PySide6.QtCore import QTimer
+        self._info_timer = QTimer(self)
+        self._info_timer.timeout.connect(self._maybe_refresh_info)
+        self._info_timer.start(500)
+
+    def _maybe_refresh_info(self):
+        # Re-render the info panel if the selected song's metadata just became
+        # available from the background preload.
+        if 0 <= self.selected_index < len(self.songs):
+            s = self.songs[self.selected_index]
+            if s.meta_loaded and not getattr(self, "_info_rendered_for", None) == s.path:
+                self._info_rendered_for = s.path
+                self._update_info()
 
     # ---- UI ---------------------------------------------------------------
     def _init_ui(self):
@@ -246,6 +261,9 @@ class MainWindow(QMainWindow):
         self.songs = midi_library.scan_midi()
         self.page = 0
         self._render_page()
+        # Pre-parse metadata in the background so selecting a song / switching
+        # pages never blocks the GUI thread on a file-system read.
+        midi_library.start_preload_thread(self.songs)
 
     def _render_page(self):
         per = config.SONGS_PER_PAGE
@@ -289,16 +307,21 @@ class MainWindow(QMainWindow):
         if idx >= len(self.songs):
             return
         self.selected_index = idx
+        self._info_rendered_for = None
         for i, b in enumerate(self.song_buttons):
             b.setChecked(i == visible_idx)
-        self.songs[idx].load_meta()
         self._update_info()
         self._update_play_enabled()
 
     def _update_info(self):
         if 0 <= self.selected_index < len(self.songs):
             s = self.songs[self.selected_index]
-            s.load_meta()
+            if not s.meta_loaded:
+                # Metadata not parsed yet (background preload still running).
+                # Show a placeholder and let the preload thread fill it; do
+                # NOT parse on the GUI thread (that was the stutter cause).
+                self.info_edit.setPlainText(i18n.t("info") + "…")
+                return
             rows = [
                 f"{i18n.t('midi_title')}: {s.title or i18n.t('midi_unknown')}",
                 f"{i18n.t('midi_artist')}: {s.artist or i18n.t('midi_unknown')}",

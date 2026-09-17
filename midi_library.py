@@ -1,5 +1,6 @@
 """Scan the MIDI folder, sort alphabetically, parse SMF metadata."""
 
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -84,6 +85,31 @@ def scan_midi(folder=None):
                 songs.append(Song(path=str(p), name=p.stem))
     songs.sort(key=lambda s: s.name.lower())
     return songs
+
+
+def preload_meta(songs, on_progress=None):
+    """Parse metadata for all songs in the background (thread-safe).
+
+    Call from a daemon thread: load_meta() sets attributes on each Song; the
+    GUI thread reads the already-cached values via load_meta() (a no-op once
+    meta_loaded). This avoids parsing MIDI files on the GUI thread, which was
+    the cause of the slow song-info / page-switch stutter.
+    """
+    n = len(songs)
+    for i, s in enumerate(songs):
+        s.load_meta()
+        if on_progress is not None:
+            try:
+                on_progress(i + 1, n)
+            except Exception:
+                pass
+
+
+def start_preload_thread(songs, on_progress=None):
+    t = threading.Thread(target=preload_meta, args=(songs, on_progress),
+                         daemon=True)
+    t.start()
+    return t
 
 
 def find_midi_on_usb(root):
