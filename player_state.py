@@ -77,11 +77,16 @@ class PlayerStateMachine(threading.Thread):
         return True
 
     def queue_next(self, song_path):
-        """Queue a song without consuming a credit (played after current)."""
+        """Queue a song for playing. Consumes a credit (one song = one credit)."""
         with self._lock:
+            if not self.hw.consume_credit():
+                self.signals.on_status("insert_coin")
+                return False
+            log.info("queue_next: credits verbruikt, queue '%s'", song_path)
             self._queue.append(song_path)
             self.signals.on_queue_change(list(self._queue))
         self._wake.set()
+        return True
 
     def stop_now(self):
         self.midi.stop()
@@ -106,6 +111,12 @@ class PlayerStateMachine(threading.Thread):
     def _tick(self):
         # Cooldown countdown
         if self.state == STATE_COOLDOWN:
+            with self._lock:
+                q = list(self._queue)
+            if q:
+                log.info("cooldown onderbroken door queue -> direct afspelen (relay aan)")
+                self._start_playing_first()
+                return
             remaining = self._cooldown_until - time.time()
             if remaining <= 0:
                 self.hw.relay_off()

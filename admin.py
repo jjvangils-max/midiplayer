@@ -380,6 +380,15 @@ def _build_settings_dialog():
     return _Impl
 
 
+def _raise_dialog(dlg):
+    """Bring a dialog above a fullscreen parent window."""
+    from PySide6.QtCore import Qt as _Qt
+    dlg.setWindowFlag(_Qt.WindowStaysOnTopHint, True)
+    dlg.show()
+    dlg.raise_()
+    dlg.activateWindow()
+
+
 def open_admin_flow(parent):
     global _PinDialog, _AdminSettingsDialog
     if _PinDialog is None:
@@ -388,5 +397,8 @@ def open_admin_flow(parent):
         _AdminSettingsDialog = _build_settings_dialog()
     Qt = _qt()[0]
     dlg = _PinDialog(parent)
+    _raise_dialog(dlg)
     if dlg.exec() == Qt.DialogCode.Accepted:
-        _AdminSettingsDialog(parent).exec()
+        settings = _AdminSettingsDialog(parent)
+        _raise_dialog(settings)
+        settings.exec()
