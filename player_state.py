@@ -50,6 +50,7 @@ class PlayerStateMachine(threading.Thread):
         self._warmup_until = None
         self._gap_until = None
         self._song_finished = threading.Event()
+        self._was_stopped = False
 
         # Subscribe to midi player
         class _M:
@@ -99,12 +100,10 @@ class PlayerStateMachine(threading.Thread):
     def stop_now(self):
         """Stop the current song. If the queue is non-empty, the next song
         plays immediately (panic-style: silence then continue). If the queue
-        is empty, go to the gap/cooldown path as usual.
+        is empty, go to the cooldown path as usual.
         """
         self.midi.stop()
-        with self._lock:
-            # Drop only the currently-playing song; keep the rest of the queue.
-            q = list(self._queue)
+        self._was_stopped = True
         self._current = None
         self.signals.on_now_playing("")
         self._song_finished.set()
@@ -145,7 +144,13 @@ class PlayerStateMachine(threading.Thread):
                 self._song_finished.clear()
                 self._current = None
                 self.signals.on_now_playing("")
-                self._start_gap()
+                if self._was_stopped:
+                    # Stop (panic) was pressed: skip the gap and play the next
+                    # queued song immediately, or fall through to cooldown.
+                    self._was_stopped = False
+                    self._advance()
+                else:
+                    self._start_gap()
             return
 
         if self.state == STATE_GAP:
