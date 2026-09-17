@@ -11,7 +11,7 @@ imports MIDI files from a USB stick, and switches EN/FR via flags.
 - GUI: **PySide6 (Qt)** — fullscreen, large touch buttons.
 - MIDI: **mido + python-rtmidi** (ALSA), plays SMF to both U4MIDI WC DIN outputs
   (ALSA client `U4MIDI WC`, ports `U4MIDI WC MIDI 1` and `U4MIDI WC MIDI 2`).
-- Coin: **JY-616** acceptor on an RS232-TTL serial line (9600 baud), binary  frame `48 45 xx` (`0x0A` = 1 EUR), read on the Pi UART RX.
+- Coin: **JY-616** acceptor on a GPIO input (NO contact, internal pull-up);  one pulse per coin = one credit.
 - Relay: **gpiozero** optocoupler output (active-HIGH by default).
 - USB: **pyudev** (event-driven import).
 
@@ -25,12 +25,18 @@ imports MIDI files from a USB stick, and switches EN/FR via flags.
 Edit `config.py`:
 
 - `MIDI_DIR` — folder with `.mid`/`.midi` files (default `/home/shared/MidiFiles`).
-- `COIN_SOURCE` / `COIN_SERIAL_PORT` / `COIN_SERIAL_BAUD` — JY-616 RS232-TTL
-  acceptor. The device sends a 3-byte binary frame `0x48 0x45 0xXX` per coin
-  (`0x0A`=1 EUR, `0x14`=2 EUR, `0x05`=0.50 EUR). One frame = one credit = one
-  song; the value is reported via `on_coin_value`. Default port is the Pi UART
-  RX `/dev/serial0` @ 9600 baud (via optocoupler). Set `COIN_SOURCE = "gpio"`
-  to use a legacy pulse acceptor instead.
+- `COIN_SOURCE` / `COIN_GPIO` / `COIN_PULL_UP` / `COIN_ACTIVE_HIGH` — JY-616 coin
+  acceptor on a GPIO input. The COIN output is a switch set to NO: in rest it
+  is open (pin kept HIGH by the internal pull-up), and per coin it closes
+  briefly to GND (a LOW pulse). Default `COIN_GPIO = 23`, `COIN_PULL_UP = True`,
+  `COIN_ACTIVE_HIGH = False`. One pulse = one credit = one song.
+- `COIN_BURST_WINDOW` / `COIN_PULSES_PER_CREDIT` — the GPIO reader groups rapid
+  pulses over a short window and converts them to credits. Default `1` pulse
+  per credit. If the acceptor emits several pulses per coin, raise
+  `COIN_PULSES_PER_CREDIT`.
+- `COIN_SOURCE = "serial"` (alternative) / `COIN_SERIAL_PORT` / `COIN_SERIAL_BAUD`
+  — only for JY-616 variants that really emit a serial frame `0x48 0x45 0xXX`
+  at 9600 baud (rare for the 616 family). See the serial section below.
 - `RELAY_GPIO` / `RELAY_ACTIVE_HIGH` — optocoupler relay pin & polarity. The
   optocoupler input is a LED, so active-HIGH is normal; flip if your module inverts.
 - `MIDI_OUT_PORT_NAMES` — exact ALSA port names of the U4MIDI WC DIN outputs.
@@ -57,35 +63,47 @@ plays to them simultaneously. If `aconnect -l` shows different names, update
 `MIDI_OUT_PORT_NAMES` in `config.py`. If no matching hardware port is found, the
 app opens a virtual ALSA port so the GUI still runs.
 
-## JY-616 serial line via optocoupler (Pi UART RX)
+## JY-616 coin input on a GPIO (NO contact, internal pull-up)
 
-The JY-616 talks **RS232-TTL at 9600 baud** (NOT a contact pulse). Connect its
+The JY-616 COIN output is a small switch, set to **NO (normally open)**: in
+rest it is open, and per accepted coin it closes briefly to GND. This is an
+open-collector-style output, not a real logic/RS-232 signal.
+
+Read it on a Raspberry Pi GPIO with the **internal pull-up** enabled (no
+optocoupler or divider needed when it is a true open-collector to GND):
+
+```
+JY-616 COIN (e.g. white wire) --> GPIO  (BCM 23)
+JY-616 GND  <->  Pi GND        (must be connected)
+```
+
+With `COIN_PULL_UP = True` the Pi keeps the pin HIGH in rest (3V3 via the
+internal pull-up); the NO switch pulls it LOW on a coin, so
+`COIN_ACTIVE_HIGH = False`. The app counts one LOW pulse = one credit = one
+song (`COIN_PULSES_PER_CREDIT = 1`).
+
+**Measure first.** With the acceptor on 12V, put a multimeter between COIN and
+GND and drop a coin:
+- 0V in rest and the pulse just shorts to GND → open-collector → use the
+  pull-up wiring above (no divider).
+- Pulse drives toward 5V → use a voltage divider, because 5V is too much for
+  the Pi: 10kΩ above (COIN→GPIO) and 20kΩ below (GPIO→GND) gives ~3.3V.
+- Pulse drives toward 12V → divider 27kΩ above / 10kΩ below (~3.25V). The
+  10kΩ/4.7Ω pair gives 3.8V, which is too high.
+
+In all cases the GND of the acceptor and the Pi must be connected, and the
+acceptor supply must never reach a GPIO directly.
+
+## JY-616 serial variant (alternative)
+
+If your JY-616 variant really emits a serial frame `0x48 0x45 0xXX` at 9600
+baud (rare for the 616 family), set `COIN_SOURCE = "serial"` and connect its
 TX line to the Pi's UART RX (BCM 15, `/dev/serial0`) through an optocoupler
-that shifts the acceptor voltage to the Pi's 3V3 logic:
-
-```
-JY-616 TX --[ R ]--+--> optocoupler LED --> GND (JY-616 side)
-                    |
-    (optocoupler transistor side, Pi supply)
-    Pi 3V3 --[ R_pull ]-- collector
-    emitter --> Pi UART RX (BCM 15)
-    emitter --> GND (Pi)
-```
-
-The optocoupler isolates the Pi's 3V3 logic from the acceptor's voltage and
-brings the signal to the right level. Each accepted coin sends the 3-byte
-frame `0x48 0x45 0xXX`; the app reads it as `/dev/serial0` @ 9600 baud.
-
-Disable the console/getty on the Pi UART so the app owns it:
-
-    sudo raspi-config → Interface Options → Serial Port → no login shell
-
-The user running the app must be able to read the serial port:
-
-    sudo usermod -aG dialout pi    # log out and back in
-
-If you use a USB-RS232 adapter instead, the port is `/dev/ttyUSB0` — set
-`COIN_SERIAL_PORT` accordingly.
+that shifts the acceptor voltage to 3V3. Disable the console/getty on the
+UART (`sudo raspi-config` → Interface Options → Serial Port → no login
+shell) and add the user to `dialout`. For a USB-RS232 adapter, the port is
+`/dev/ttyUSB0`. One frame = one credit; the value byte is reported via
+`on_coin_value`.
 
 ## Serial port permissions (JY-616)
 
@@ -109,12 +127,16 @@ Python shell to test coin logic if needed.
 
 ## Notes / things to confirm on hardware
 
-1. **JY-616 serial**: confirm the port (`/dev/serial0` for the Pi UART RX via
-   optocoupler, `/dev/ttyUSB0` for a USB adapter) and the 9600 baud rate. The
-   parser expects the binary frame `0x48 0x45 0xXX`; the value byte is scaled by
-   `COIN_VALUE_SCALE` (default `10`, so `0x0A` -> 100 ct = 1 EUR) and reported
-   via `on_coin_value`.
-2. **Optocoupler relay**: drive it active-HIGH (Pi HIGH → LED on → output closed).
+1. **JY-616 coin (GPIO)**: with `COIN_SOURCE = "gpio"` confirm the COIN output
+   is the NO contact to GND (measure: 0V in rest, brief short to GND per coin).
+   With the internal pull-up the pin reads HIGH in rest and LOW on a coin, so
+   `COIN_PULL_UP = True` and `COIN_ACTIVE_HIGH = False`. If your unit drives 5V
+   or 12V, use a divider to 3V3 (see above). Set `COIN_PULSES_PER_CREDIT` to the
+   number of pulses the acceptor emits per coin. No coin value is reported.
+2. **JY-616 serial (alternative)**: only for variants that really emit a serial
+   frame `0x48 0x45 0xXX` at 9600 baud. Confirm the port and baud; the value byte
+   is scaled by `COIN_VALUE_SCALE` (default `10`, so `0x0A` -> 100 ct = 1 EUR).
+3. **Optocoupler relay**: drive it active-HIGH (Pi HIGH → LED on → output closed).
    If the optocoupler module inverts, set `RELAY_ACTIVE_HIGH = False`. The Pi
    3V3 pin current is fine for an optocoupler LED via its resistor — do not drive
    a relay coil directly from a GPIO.
