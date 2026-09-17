@@ -97,10 +97,16 @@ class PlayerStateMachine(threading.Thread):
         return True
 
     def stop_now(self):
+        """Stop the current song. If the queue is non-empty, the next song
+        plays immediately (panic-style: silence then continue). If the queue
+        is empty, go to the gap/cooldown path as usual.
+        """
         self.midi.stop()
         with self._lock:
-            self._queue.clear()
-            self.signals.on_queue_change([])
+            # Drop only the currently-playing song; keep the rest of the queue.
+            q = list(self._queue)
+        self._current = None
+        self.signals.on_now_playing("")
         self._song_finished.set()
         self._wake.set()
 

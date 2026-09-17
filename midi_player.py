@@ -106,15 +106,20 @@ class MidiPlayer(threading.Thread):
 
     def stop(self):
         self._stop_flag.set()
-        self._wake.set()  # break out of a sleep/wait promptly
+        self._panic = True
+        self._wake.set()  # break out of a sleep/wait promptly and panic
 
     # ---- thread -----------------------------------------------------------
     def run(self):
         self._wake = threading.Event()
         self._go = False
+        self._panic = False
         while True:
             self._wake.wait()
             self._wake.clear()
+            if self._panic:
+                self._panic = False
+                self._all_notes_off()
             if not self._go:
                 continue
             song = self._song
@@ -180,15 +185,24 @@ class MidiPlayer(threading.Thread):
             pass
 
     def _all_notes_off(self):
+        """Panic: turn off every note on every channel.
+
+        CC 123/120 are ignored by many hardware synths (incl. the CME DIN
+        outputs), so we send explicit Note-Off for all 128 notes on all 16
+        channels — the only method that works universally. This is ~2k
+        messages but completes in a few ms and is only sent on stop/finish.
+        """
         for port in self._ports:
             for ch in range(16):
+                # Sustain / sostenuto pedal off first, so pedal-held notes
+                # are not shielded from the note-offs below.
                 try:
-                    # All Notes Off (CC 123) - releases held notes on most
-                    # synthesizers without flooding the MIDI bus.
-                    port.send_message([0xB0 | ch, 123, 0])
-                    # Sustain pedal off (CC 64) so pedal-held notes release.
-                    port.send_message([0xB0 | ch, 64, 0])
-                    # All Sound Off (CC 120) as a hard fallback.
-                    port.send_message([0xB0 | ch, 120, 0])
+                    port.send_message([0xB0 | ch, 64, 0])   # sustain off
+                    port.send_message([0xB0 | ch, 66, 0])   # sostenuto off
                 except Exception:
                     pass
+                for note in range(128):
+                    try:
+                        port.send_message([0x80 | ch, note, 0])
+                    except Exception:
+                        pass
