@@ -11,8 +11,11 @@ the GUI still runs on a development machine. The interface stays identical.
 
 import threading
 import time
+import logging
 
 import config
+
+log = logging.getLogger("midiplayer.hardware")
 
 try:
     from gpiozero import Button, OutputDevice
@@ -155,8 +158,13 @@ class GpioCoinReader(CoinReader, threading.Thread):
 
     def start(self):
         if not _HAS_GPIO:
+            log.warning("gpiozero niet beschikbaar; GpioCoinReader uitgeschakeld")
             return
         try:
+            from gpiozero import Device
+            log.info("GpioCoinReader.start: pin=%s pull_up=%s active_high=%s factory=%s",
+                     config.COIN_GPIO, config.COIN_PULL_UP, config.COIN_ACTIVE_HIGH,
+                     getattr(Device, "pin_factory", None))
             self._button = Button(
                 config.COIN_GPIO,
                 pull_up=config.COIN_PULL_UP,
@@ -165,7 +173,9 @@ class GpioCoinReader(CoinReader, threading.Thread):
             # NO switch to GND: the pulse pulls the pin LOW, so it is LOW-true.
             self._button.when_activated = self._on_pulse if config.COIN_ACTIVE_HIGH else None
             self._button.when_deactivated = self._on_pulse if not config.COIN_ACTIVE_HIGH else None
-        except Exception:
+            log.info("GpioCoinReader: Button aangemaakt op BCM %s, reader-thread start", config.COIN_GPIO)
+        except Exception as e:
+            log.error("GpioCoinReader.start FAALT op BCM %s: %r", config.COIN_GPIO, e)
             self._button = None
             return
         threading.Thread.start(self)

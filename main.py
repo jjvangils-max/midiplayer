@@ -4,6 +4,7 @@ Run:  python main.py
 """
 
 import sys
+import logging
 import threading
 
 from PySide6.QtWidgets import QMessageBox
@@ -62,6 +63,7 @@ class Wiring:
 
 
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(name)s: %(levelname)s: %(message)s")
     i18n.set_language(config.DEFAULT_LANG)
     config.MIDI_DIR.mkdir(parents=True, exist_ok=True)
 
