@@ -81,6 +81,7 @@ class MainWindow(QMainWindow):
         self._queue_text = ""
         self._status_key = "insert_coin"
         self._status_kwargs = {}
+        self._last_balance_cents = 0
         self._init_ui()
         self.refresh_library()
         self._hold_detector = None
@@ -373,7 +374,7 @@ class MainWindow(QMainWindow):
         # section labels re-render
         self._render_page()
         self._update_info()
-        self._update_balance(self.hw.balance_cents if self.hw else 0)
+        self._update_balance(getattr(self, "_last_balance_cents", 0))
         self._render_now()
         self._render_next()
         if self._status_key is not None:
@@ -422,6 +423,7 @@ class MainWindow(QMainWindow):
         self._update_balance(cents)
 
     def _update_balance(self, cents):
+        self._last_balance_cents = cents
         amount = f"{cents / 100:.2f}"
         self.balance_lbl.setText(i18n.t("balance", amount=amount))
 

@@ -137,12 +137,13 @@ class MidiPlayer(threading.Thread):
             self.signals.on_state("error")
             return
 
-        self._all_notes_off()
         self.signals.on_state("playing")
         start = time.time()
         last_progress = 0.0
+        was_stopped = False
         for msg in mid:
             if self._stop_flag.is_set():
+                was_stopped = True
                 break
             if msg.is_meta:
                 continue
@@ -156,9 +157,12 @@ class MidiPlayer(threading.Thread):
             if now - last_progress >= 0.25:
                 last_progress = now
                 self.signals.on_progress(now - start)
-        # Always silence notes after the song (or after a stop interrupt).
-        # Doing this inside the play loop thread avoids races with stop().
-        self._all_notes_off()
+        # Only run the full panic when the song was interrupted by stop().
+        # On normal finish the SMF's own note-offs have silenced everything;
+        # running the 2k-message panic on every song transition would delay
+        # the start of the next song and make it miss its first bars.
+        if was_stopped:
+            self._all_notes_off()
         if self._stop_flag.is_set():
             self.signals.on_state("stopped")
         else:
