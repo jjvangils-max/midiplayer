@@ -316,14 +316,15 @@ class Hardware:
     def consume_credit(self):
         """Try to charge one song. Returns True if the balance was enough."""
         price = config.SONG_PRICE_CENTS
+        charged = False
         with self._lock:
             if self.balance_cents >= price:
                 self.balance_cents -= price
-                balance = self.balance_cents
-                return True
+                charged = True
             balance = self.balance_cents
+        # Always notify the UI with the current balance.
         self.signals.on_coin(balance)
-        return False
+        return charged
 
     def set_credits(self, cents):
         with self._lock:

@@ -333,7 +333,7 @@ def _build_settings_dialog():
             h.addWidget(okbtn)
             h.addWidget(cancelbtn)
             v.addLayout(h)
-            if dlg.exec() == Qt.DialogCode.Accepted and getattr(dlg, "_name", ""):
+            if dlg.exec() == QDialog.Accepted and getattr(dlg, "_name", ""):
                 new_stem = dlg._name.strip()
                 if not new_stem:
                     return
@@ -395,10 +395,10 @@ def open_admin_flow(parent):
         _PinDialog = _build_pin_dialog()
     if _AdminSettingsDialog is None:
         _AdminSettingsDialog = _build_settings_dialog()
-    Qt = _qt()[0]
+    Qt, QTimer, QDialog = _qt()[:3]
     dlg = _PinDialog(parent)
     _raise_dialog(dlg)
-    if dlg.exec() == Qt.DialogCode.Accepted:
+    if dlg.exec() == QDialog.Accepted:
         settings = _AdminSettingsDialog(parent)
         _raise_dialog(settings)
         settings.exec()
