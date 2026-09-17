@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=MIDI Player
+Comment=Jukebox kiosk voor de MIDI Player
+Exec=/home/admin/midiplayer-venv/bin/python /home/admin/midiplayer/main.py
+Icon=media-playback-start
+Terminal=false
+Categories=AudioVideo;Audio;Player;

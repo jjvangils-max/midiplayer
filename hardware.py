@@ -201,36 +201,62 @@ class GpioCoinReader(CoinReader, threading.Thread):
         return self._button is not None
 
     def run(self):
-        """Poll the coin pin and count LOW pulses per burst.
+        """Poll the coin pin and count pulses per burst.
 
         gpiozero edge callbacks are unreliable for the JY-616's short (20 ms)
-        pulses combined with bounce_time, so we poll button.is_active directly
-        and count transitions to the pulse state. A burst is complete when no
-        new pulse arrives for COIN_BURST_WINDOW after the last one.
+        pulses combined with bounce_time, so we poll button.is_active (a raw
+        lgpio.gpio_read under the hood) and count pulses with a small software
+        debounce state machine so contact bounce does not double-count. A burst
+        is complete when no new pulse arrives for COIN_BURST_WINDOW after the
+        last one.
         """
         window = config.COIN_BURST_WINDOW
         value_table = config.COIN_PULSE_VALUE
-        poll = 0.005                       # 5 ms: catches 20 ms pulses reliably
+        debounce = max(0.005, config.COIN_DEBOUNCE)   # software debounce (s)
+        poll = 0.003                                  # 3 ms sample interval
         button = self._button
         pulses = 0
-        last_pulse = False                 # was the pin in the pulse state last sample?
         last_pulse_time = 0.0
+        armed = True            # ready to count a falling edge (pin at rest)
+        high_since = None       # when the pin first returned to rest after a pulse
+        prev = None             # previous pulse-state sample
+        log.info("GpioCoinReader: polling gestart (rust is_active=%s)",
+                 button.is_active)
         while not self._stop.is_set():
             time.sleep(poll)
             try:
                 is_active = button.is_active
-            except Exception:
+            except Exception as e:
+                if not getattr(self, "_read_err_logged", False):
+                    log.error("GpioCoinReader: fout bij lezen pin: %r", e)
+                    self._read_err_logged = True
                 continue
-            # With pull_up=True, is_active is True when the pin is LOW. The coin
+            # pull_up=True -> is_active is True when the pin is LOW. The coin
             # pulse (active_high=False) pulls the pin LOW, so the pulse state is
             # is_active; for an active-high pulse it is the inverse.
             pulse_now = (not is_active) if config.COIN_ACTIVE_HIGH else is_active
             now = time.monotonic()
-            if pulse_now and not last_pulse:
+            if prev is None:
+                prev = pulse_now
+                armed = not pulse_now
+                continue
+            if armed and pulse_now and not prev:
+                # falling edge into the pulse state -> one pulse
                 pulses += 1
                 last_pulse_time = now
+                armed = False
+                high_since = None
                 log.info("GpioCoinReader: puls %d gedetecteerd", pulses)
-            last_pulse = pulse_now
+            elif not armed:
+                # wait for the pin to return to rest and stay there (debounce)
+                if not pulse_now:
+                    if high_since is None:
+                        high_since = now
+                    elif now - high_since >= debounce:
+                        armed = True
+                else:
+                    high_since = None
+            prev = pulse_now
             if pulses and now - last_pulse_time >= window:
                 cents = value_table.get(pulses)
                 log.info("GpioCoinReader: burst compleet, %d puls(en) -> %s cent",
