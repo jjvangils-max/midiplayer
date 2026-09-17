@@ -93,6 +93,8 @@ def main():
     class _HwWiring:
         on_coin = wiring.on_coin
         on_relay = wiring.on_relay
+        def on_coin_value(self, cents):
+            pass
     hw.signals = _HwWiring()
 
     sm.start()

@@ -13,8 +13,11 @@ States:  IDLE -> WARMUP -> PLAYING -> GAP -> (PLAYING|COOLDOWN -> IDLE)
 
 import threading
 import time
+import logging
 
 import config
+
+log = logging.getLogger("midiplayer.state")
 
 
 class StateSignals:
@@ -68,6 +71,7 @@ class PlayerStateMachine(threading.Thread):
             if not self.hw.consume_credit():
                 self.signals.on_status("insert_coin")
                 return False
+            log.info("request_play: credits verbruikt, queue '%s'", song_path)
             self._queue.insert(0, song_path)
         self._wake.set()
         return True
@@ -145,10 +149,12 @@ class PlayerStateMachine(threading.Thread):
     # ---- transitions ------------------------------------------------------
     def _begin_warmup_or_play(self):
         if not self.hw.is_relay_on():
+            log.info("relay uit -> warmup %ss", config.WARMUP_TIME)
             self.hw.relay_on()
             self._warmup_until = time.time() + config.WARMUP_TIME
             self._set_state(STATE_WARMUP)
         else:
+            log.info("relay aan -> direct afspelen")
             self._start_playing_first()
 
     def _start_playing_first(self):
@@ -161,6 +167,7 @@ class PlayerStateMachine(threading.Thread):
         self._current = song
         self.signals.on_now_playing(Path_safe(song))
         self._song_finished.clear()
+        log.info("Afspelen starten: %s", song)
         self.midi.play(song)
         self._set_state(STATE_PLAYING)
 
@@ -179,6 +186,7 @@ class PlayerStateMachine(threading.Thread):
 
     def _set_state(self, s):
         self.state = s
+        log.info("State -> %s", s)
         info = {}
         if s == STATE_WARMUP:
             info["seconds"] = int((self._warmup_until - time.time()))

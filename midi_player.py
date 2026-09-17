@@ -10,17 +10,22 @@ import time
 
 import config
 
+import logging
+log = logging.getLogger("midiplayer.midi")
+
 try:
     import rtmidi  # python-rtmidi
     _HAS_RTMIDI = True
-except Exception:
+except Exception as _e:
     _HAS_RTMIDI = False
+    log.error("rtmidi niet beschikbaar: %r", _e)
 
 try:
     import mido
     _HAS_MIDO = True
-except Exception:
+except Exception as _e:
     _HAS_MIDO = False
+    log.error("mido niet beschikbaar: %r", _e)
 
 
 def list_ports():
@@ -36,7 +41,9 @@ def list_ports():
 def find_output_ports():
     """Return up to MIDI_NUM_OUTS ALSA port names matching the configured hints."""
     all_ports = list_ports()
+    log.info("ALSA-poorten: %s", all_ports)
     matches = [p for p in all_ports if any(h in p for h in config.MIDI_OUT_PORT_NAMES)]
+    log.info("CME-poorten gevonden: %s", matches)
     # Heuristic: physical DIN outs typically appear as separate ALSA clients.
     # If we have fewer matches than needed, just take what we have.
     return matches[: config.MIDI_NUM_OUTS] if matches else []
@@ -70,16 +77,19 @@ class MidiPlayer(threading.Thread):
                 mo = rtmidi.MidiOut(rtapi=rtmidi.API_LINUX_ALSA)
                 mo.open_port(n)
                 self._ports.append(mo)
-            except Exception:
-                pass
+                log.info("MIDI-uitgang geopend: %s", n)
+            except Exception as e:
+                log.error("Openen MIDI-poort %s faalde: %r", n, e)
         if not self._ports:
+            log.warning("Geen CME-poort geopend; fallback op virtuele poort")
             # fall back: open a virtual port (no hardware) so the app still runs
             try:
                 mo = rtmidi.MidiOut(rtapi=rtmidi.API_LINUX_ALSA)
                 mo.open_virtual_port("MidiPlayer")
                 self._ports.append(mo)
-            except Exception:
-                pass
+                log.info("Virtuele MIDI-poort geopend")
+            except Exception as e:
+                log.error("Virtuele poort faalde: %r", e)
 
     def available(self):
         return bool(self._ports)
