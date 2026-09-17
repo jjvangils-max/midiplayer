@@ -19,7 +19,7 @@ SCREEN_H = 600
 SONGS_PER_PAGE = 8
 
 # --- Timing (seconds) -----------------------------------------------------
-WARMUP_TIME = 45        # hold relay on, show "Waiting for startup" before first play
+WARMUP_TIME = 20        # hold relay on, show countdown before first play
 GAP_TIME = 15           # pause between songs
 COOLDOWN_TIME = 300     # keep installation on this long after the last song, then relay off
 

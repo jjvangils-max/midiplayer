@@ -136,7 +136,7 @@ class PlayerStateMachine(threading.Thread):
             if remaining <= 0:
                 self._start_playing_first()
             else:
-                self.signals.on_status("waiting_startup")
+                self.signals.on_status("warmup", s=int(remaining))
             return
 
         # IDLE: is there something to play with credit already consumed?

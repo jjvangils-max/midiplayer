@@ -83,6 +83,11 @@ class MainWindow(QMainWindow):
         self._status_kwargs = {}
         self._init_ui()
         self.refresh_library()
+        self._hold_detector = None
+        # Hidden admin access: hold top-left corner 3s -> PIN -> settings.
+        import admin
+        self._hold_detector = admin.CornerHoldDetector(
+            self, lambda: admin.open_admin_flow(self))
 
     # ---- UI ---------------------------------------------------------------
     def _init_ui(self):
@@ -434,6 +439,17 @@ class MainWindow(QMainWindow):
         msg.button(QMessageBox.No).setText(i18n.t("usb_import_no"))
         if msg.exec() == QMessageBox.Yes:
             self.signals.usb_import_answer.emit(True, mount_path)
+
+    # ---- hidden admin corner-hold ----------------------------------------
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton and self._hold_detector is not None:
+            self._hold_detector.press(event.position().toPoint())
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._hold_detector is not None:
+            self._hold_detector.release(event.position().toPoint())
+        super().mouseReleaseEvent(event)
 
 
 def build_app(argv):
