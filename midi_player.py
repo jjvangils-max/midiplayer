@@ -106,12 +106,7 @@ class MidiPlayer(threading.Thread):
 
     def stop(self):
         self._stop_flag.set()
-        # Give the play loop a moment to notice the stop flag, then kill any
-        # sounding notes. Sending note-off immediately can race with the loop
-        # still turning notes on; a short delay ensures the loop has exited.
-        import time as _time
-        _time.sleep(0.02)
-        self._all_notes_off()
+        self._wake.set()  # break out of a sleep/wait promptly
 
     # ---- thread -----------------------------------------------------------
     def run(self):
@@ -151,14 +146,13 @@ class MidiPlayer(threading.Thread):
             data = msg.bytes()
             if data:
                 for port in self._ports:
-                    try:
-                        port.send_message(data)
-                    except Exception:
-                        pass
+                    self._send_safe(port, data)
             now = time.time()
             if now - last_progress >= 0.25:
                 last_progress = now
                 self.signals.on_progress(now - start)
+        # Always silence notes after the song (or after a stop interrupt).
+        # Doing this inside the play loop thread avoids races with stop().
         self._all_notes_off()
         if self._stop_flag.is_set():
             self.signals.on_state("stopped")
@@ -172,6 +166,18 @@ class MidiPlayer(threading.Thread):
             if self._stop_flag.is_set():
                 return
             time.sleep(min(0.01, end - time.time()))
+
+    def _send_safe(self, port, data):
+        """Send a MIDI message, skipping invalid (out-of-range) bytes.
+
+        Some MIDI files contain corrupt/out-of-range values that make
+        rtmidi raise "data must be in range 0...127"; skip those rather than
+        abort playback.
+        """
+        try:
+            port.send_message(data)
+        except Exception:
+            pass
 
     def _all_notes_off(self):
         for port in self._ports:

@@ -96,6 +96,15 @@ class MainWindow(QMainWindow):
         self._info_timer.start(500)
 
     def _maybe_refresh_info(self):
+        # Once the background preload has checked all songs, drop any corrupt
+        # ones from the list and re-render the page. Do this only once per
+        # refresh cycle.
+        if all(getattr(s, "meta_checked", False) for s in self.songs):
+            valid = [s for s in self.songs if getattr(s, "valid", True)]
+            if len(valid) != len(self.songs):
+                self.songs = valid
+                self.selected_index = -1
+                self._render_page()
         # Re-render the info panel if the selected song's metadata just became
         # available from the background preload.
         if 0 <= self.selected_index < len(self.songs):

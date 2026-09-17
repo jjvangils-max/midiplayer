@@ -50,6 +50,8 @@ class Song:
     tracks: int = 0
     length: float = 0.0
     meta_loaded: bool = field(default=False)
+    valid: bool = True
+    meta_checked: bool = field(default=False)
 
     def load_meta(self):
         if self.meta_loaded:
@@ -61,6 +63,8 @@ class Song:
         self.tempo = meta["tempo"]
         self.tracks = meta["tracks"]
         self.length = meta["length"]
+        self.valid = meta["tracks"] > 0
+        self.meta_checked = True
         self.meta_loaded = True
 
 
