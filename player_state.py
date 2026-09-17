@@ -66,13 +66,21 @@ class PlayerStateMachine(threading.Thread):
 
     # ---- external API -----------------------------------------------------
     def request_play(self, song_path):
-        """User pressed PLAY for song_path. Requires a credit."""
+        """User pressed PLAY for song_path.
+
+        If something is already playing (or warming up / in gap), behave like
+        add-to-queue so the credit is not wasted: the song is appended and
+        played after the current one. If idle, charge a credit and start now.
+        """
+        if self.state in (STATE_PLAYING, STATE_WARMUP, STATE_GAP):
+            return self.queue_next(song_path)
         with self._lock:
             if not self.hw.consume_credit():
                 self.signals.on_status("insert_coin")
                 return False
             log.info("request_play: credits verbruikt, queue '%s'", song_path)
             self._queue.insert(0, song_path)
+            self.signals.on_queue_change(list(self._queue))
         self._wake.set()
         return True
 

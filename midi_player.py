@@ -106,6 +106,11 @@ class MidiPlayer(threading.Thread):
 
     def stop(self):
         self._stop_flag.set()
+        # Give the play loop a moment to notice the stop flag, then kill any
+        # sounding notes. Sending note-off immediately can race with the loop
+        # still turning notes on; a short delay ensures the loop has exited.
+        import time as _time
+        _time.sleep(0.02)
         self._all_notes_off()
 
     # ---- thread -----------------------------------------------------------
@@ -169,10 +174,15 @@ class MidiPlayer(threading.Thread):
             time.sleep(min(0.01, end - time.time()))
 
     def _all_notes_off(self):
-        for ch in range(16):
-            msg = [0xB0 | ch, 123, 0]  # All Notes Off
-            for port in self._ports:
+        for port in self._ports:
+            for ch in range(16):
                 try:
-                    port.send_message(msg)
+                    # All Notes Off (CC 123) - releases held notes on most
+                    # synthesizers without flooding the MIDI bus.
+                    port.send_message([0xB0 | ch, 123, 0])
+                    # Sustain pedal off (CC 64) so pedal-held notes release.
+                    port.send_message([0xB0 | ch, 64, 0])
+                    # All Sound Off (CC 120) as a hard fallback.
+                    port.send_message([0xB0 | ch, 120, 0])
                 except Exception:
                     pass
