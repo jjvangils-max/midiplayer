@@ -11,7 +11,7 @@ imports MIDI files from a USB stick, and switches EN/FR via flags.
 - GUI: **PySide6 (Qt)** — fullscreen, large touch buttons.
 - MIDI: **mido + python-rtmidi** (ALSA), plays SMF to both U4MIDI WC DIN outputs
   (ALSA client `U4MIDI WC`, ports `U4MIDI WC MIDI 1` and `U4MIDI WC MIDI 2`).
-- Coin: **JY-616** acceptor on a GPIO input (NO contact, internal pull-up);  one pulse per coin = one credit.
+- Coin: **JY-616** acceptor on a GPIO input (NO contact, internal pull-up);  pulse count encodes coin value, balance in euros.
 - Relay: **gpiozero** optocoupler output (active-HIGH by default).
 - USB: **pyudev** (event-driven import).
 
@@ -28,12 +28,13 @@ Edit `config.py`:
 - `COIN_SOURCE` / `COIN_GPIO` / `COIN_PULL_UP` / `COIN_ACTIVE_HIGH` — JY-616 coin
   acceptor on a GPIO input. The COIN output is a switch set to NO: in rest it
   is open (pin kept HIGH by the internal pull-up), and per coin it closes
-  briefly to GND (a LOW pulse). Default `COIN_GPIO = 23`, `COIN_PULL_UP = True`,
-  `COIN_ACTIVE_HIGH = False`. One pulse = one credit = one song.
-- `COIN_BURST_WINDOW` / `COIN_PULSES_PER_CREDIT` — the GPIO reader groups rapid
-  pulses over a short window and converts them to credits. Default `1` pulse
-  per credit. If the acceptor emits several pulses per coin, raise
-  `COIN_PULSES_PER_CREDIT`.
+  briefly to GND, producing a burst of pulses. Default `COIN_GPIO = 23`,
+  `COIN_PULL_UP = True`, `COIN_ACTIVE_HIGH = False`.
+- `COIN_BURST_WINDOW` / `COIN_PULSE_VALUE` / `SONG_PRICE_CENTS` — the number of
+  pulses per coin encodes the coin value (set on the JY-616): 1=0.05, 2=0.10,
+  3=0.20, 4=0.50, 5=1.00, 6=2.00 EUR. The reader adds the coin value to a euro
+  balance; playing one song costs `SONG_PRICE_CENTS` (default 50 = 0.50 EUR),
+  so a 2 EUR coin (6 pulses) buys 4 songs.
 - `COIN_SOURCE = "serial"` (alternative) / `COIN_SERIAL_PORT` / `COIN_SERIAL_BAUD`
   — only for JY-616 variants that really emit a serial frame `0x48 0x45 0xXX`
   at 9600 baud (rare for the 616 family). See the serial section below.
@@ -79,8 +80,9 @@ JY-616 GND  <->  Pi GND        (must be connected)
 
 With `COIN_PULL_UP = True` the Pi keeps the pin HIGH in rest (3V3 via the
 internal pull-up); the NO switch pulls it LOW on a coin, so
-`COIN_ACTIVE_HIGH = False`. The app counts one LOW pulse = one credit = one
-song (`COIN_PULSES_PER_CREDIT = 1`).
+`COIN_ACTIVE_HIGH = False`. The app counts the burst of LOW pulses per coin,
+looks up the coin value in `COIN_PULSE_VALUE`, and adds it to a euro balance.
+Playing one song costs `SONG_PRICE_CENTS` (0.50 EUR).
 
 **Measure first.** With the acceptor on 12V, put a multimeter between COIN and
 GND and drop a coin:
@@ -113,7 +115,8 @@ shell) and add the user to `dialout`. For a USB-RS232 adapter, the port is
   per page with ◀/▶ paging.
 - **Select** a song → metadata (title/artist/copyright/tempo/length/tracks) is
   shown in the info panel together with the big **PLAY** button.
-- **PLAY is only enabled after a coin**; the credit counter is shown top-center.
+- **PLAY is only enabled after a coin**; the euro balance is shown top-center.
+  One song costs 0.50 EUR; the balance decreases per song.
 - While a song plays you may queue the next one (it plays after the 15 s gap).
 - On first play (relay off): relay energised, **"Waiting for startup…"** for 45 s,
   then playback starts.
@@ -122,8 +125,8 @@ shell) and add the user to `dialout`. For a USB-RS232 adapter, the port is
 ## Mock mode
 
 On a non-Pi machine (no gpiozero / no U4MIDI), the app still launches: GPIO is a
-no-op mock and MIDI opens a virtual ALSA port. Use `hw.add_credits(1)` from a
-Python shell to test coin logic if needed.
+no-op mock and MIDI opens a virtual ALSA port. Use `hw.add_credits(50)` from a
+Python shell to add 0.50 EUR and test coin logic if needed.
 
 ## Notes / things to confirm on hardware
 

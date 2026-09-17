@@ -28,8 +28,8 @@ class Wiring:
         self._pending_usb = None
 
     # hardware signals
-    def on_coin(self, count):
-        self.win.update_credits(count)
+    def on_coin(self, balance_cents):
+        self.win.update_balance(balance_cents)
     def on_relay(self, on):
         self.win.set_status_key("relay_on" if on else "relay_off")
 
@@ -119,7 +119,7 @@ def main():
     ))
 
     # initial status
-    win.update_credits(hw.credits)
+    win.update_balance(hw.balance_cents)
     if hw.available():
         win.set_status_key("insert_coin")
     else:

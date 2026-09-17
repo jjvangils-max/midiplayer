@@ -109,12 +109,12 @@ class MainWindow(QMainWindow):
         bar.setSpacing(12)
         self.title_lbl = QLabel(i18n.t("title"))
         self.title_lbl.setObjectName("title")
-        self.credits_lbl = QLabel(i18n.t("credits", n=0))
-        self.credits_lbl.setObjectName("credits")
-        self.credits_lbl.setAlignment(Qt.AlignCenter)
+        self.balance_lbl = QLabel(i18n.t("balance", amount="0.00"))
+        self.balance_lbl.setObjectName("credits")
+        self.balance_lbl.setAlignment(Qt.AlignCenter)
         bar.addWidget(self.title_lbl)
         bar.addStretch(1)
-        bar.addWidget(self.credits_lbl)
+        bar.addWidget(self.balance_lbl)
         bar.addStretch(1)
 
         self.flag_en = QPushButton("🇬🇧 EN")
@@ -336,7 +336,7 @@ class MainWindow(QMainWindow):
         # section labels re-render
         self._render_page()
         self._update_info()
-        self._update_credits(self.hw.credits if self.hw else 0)
+        self._update_balance(self.hw.balance_cents if self.hw else 0)
         self._render_now()
         self._render_next()
         if self._status_key is not None:
@@ -344,9 +344,9 @@ class MainWindow(QMainWindow):
         self.signals.language_changed.emit(lang)
 
     # ---- slots from state machine / hardware (thread-safe via signals) ----
-    def update_credits(self, n):
-        QMetaObject.invokeMethod(self, "_slot_credits", Qt.QueuedConnection,
-                                 Q_ARG(int, n))
+    def update_balance(self, cents):
+        QMetaObject.invokeMethod(self, "_slot_balance", Qt.QueuedConnection,
+                                 Q_ARG(int, cents))
 
     def update_status(self, text):
         QMetaObject.invokeMethod(self, "_slot_status", Qt.QueuedConnection,
@@ -381,8 +381,12 @@ class MainWindow(QMainWindow):
 
     # ---- actual slot implementations (invoked on GUI thread) --------------
     @Slot(int)
-    def _slot_credits(self, n):
-        self.credits_lbl.setText(i18n.t("credits", n=n))
+    def _slot_balance(self, cents):
+        self._update_balance(cents)
+
+    def _update_balance(self, cents):
+        amount = f"{cents / 100:.2f}"
+        self.balance_lbl.setText(i18n.t("balance", amount=amount))
 
     @Slot(str)
     def _slot_status(self, text):
@@ -417,9 +421,6 @@ class MainWindow(QMainWindow):
     @Slot(bool)
     def _slot_playing(self, playing):
         self.stop_btn.setEnabled(playing)
-
-    def _update_credits(self, n):
-        self.credits_lbl.setText(i18n.t("credits", n=n))
 
     # ---- USB import dialog (invoked via queued meta call) -----------------
     @Slot(str)
