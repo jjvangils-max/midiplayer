@@ -19,8 +19,8 @@ SCREEN_H = 600
 SONGS_PER_PAGE = 8
 
 # --- Timing (seconds) -----------------------------------------------------
-WARMUP_TIME = 45        # hold relay on, show "Waiting for startup" before first play
-GAP_TIME = 15           # pause between songs
+WARMUP_TIME = 15        # hold relay on, show "Waiting for startup" before first play
+GAP_TIME = 10           # pause between songs
 COOLDOWN_TIME = 300     # keep installation on this long after the last song, then relay off
 
 # --- Coin mechanism: JY-616 on a GPIO input (NO contact, pull-up) ----------
