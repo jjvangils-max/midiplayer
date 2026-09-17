@@ -213,7 +213,8 @@ class GpioCoinReader(CoinReader, threading.Thread):
         window = config.COIN_BURST_WINDOW
         value_table = config.COIN_PULSE_VALUE
         debounce = max(0.005, config.COIN_DEBOUNCE)   # software debounce (s)
-        poll = 0.003                                  # 3 ms sample interval
+        poll = 0.01                                   # 10 ms sample interval
+                                                   # (still < 20 ms pulse width)
         button = self._button
         pulses = 0
         last_pulse_time = 0.0

@@ -364,6 +364,16 @@ def _build_settings_dialog():
             except Exception as e:
                 QMessageBox.critical(self, i18n.t("admin_delete"), str(e))
 
+        def closeEvent(self, event):
+            # Notify the parent so it can refresh its song library.
+            try:
+                p = self.parent()
+                if getattr(p, "refresh_library", None):
+                    p.refresh_library()
+            except Exception:
+                pass
+            super().closeEvent(event)
+
         def _save_meta(self):
             song = self._current_song()
             if song is None:

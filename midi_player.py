@@ -135,6 +135,7 @@ class MidiPlayer(threading.Thread):
         self._all_notes_off()
         self.signals.on_state("playing")
         start = time.time()
+        last_progress = 0.0
         for msg in mid:
             if self._stop_flag.is_set():
                 break
@@ -149,7 +150,10 @@ class MidiPlayer(threading.Thread):
                         port.send_message(data)
                     except Exception:
                         pass
-            self.signals.on_progress(time.time() - start)
+            now = time.time()
+            if now - last_progress >= 0.25:
+                last_progress = now
+                self.signals.on_progress(now - start)
         self._all_notes_off()
         if self._stop_flag.is_set():
             self.signals.on_state("stopped")
