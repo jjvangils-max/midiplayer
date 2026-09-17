@@ -39,13 +39,14 @@ def list_ports():
 
 
 def find_output_ports():
-    """Return up to MIDI_NUM_OUTS ALSA port names matching the configured hints."""
+    """Return (index, name) pairs for up to MIDI_NUM_OUTS ALSA ports matching
+    the configured hints. rtmidi's open_port() takes an integer index, not a
+    name, so we return the index alongside the name for logging."""
     all_ports = list_ports()
     log.info("ALSA-poorten: %s", all_ports)
-    matches = [p for p in all_ports if any(h in p for h in config.MIDI_OUT_PORT_NAMES)]
-    log.info("CME-poorten gevonden: %s", matches)
-    # Heuristic: physical DIN outs typically appear as separate ALSA clients.
-    # If we have fewer matches than needed, just take what we have.
+    matches = [(i, p) for i, p in enumerate(all_ports)
+               if any(h in p for h in config.MIDI_OUT_PORT_NAMES)]
+    log.info("CME-poorten gevonden: %s", [p for _, p in matches])
     return matches[: config.MIDI_NUM_OUTS] if matches else []
 
 
@@ -71,15 +72,15 @@ class MidiPlayer(threading.Thread):
     def _open_ports(self):
         if not _HAS_RTMIDI:
             return
-        names = find_output_ports()
-        for n in names:
+        matches = find_output_ports()
+        for idx, name in matches:
             try:
                 mo = rtmidi.MidiOut(rtapi=rtmidi.API_LINUX_ALSA)
-                mo.open_port(n)
+                mo.open_port(idx)
                 self._ports.append(mo)
-                log.info("MIDI-uitgang geopend: %s", n)
+                log.info("MIDI-uitgang geopend: %s (index %d)", name, idx)
             except Exception as e:
-                log.error("Openen MIDI-poort %s faalde: %r", n, e)
+                log.error("Openen MIDI-poort %s (index %d) faalde: %r", name, idx, e)
         if not self._ports:
             log.warning("Geen CME-poort geopend; fallback op virtuele poort")
             # fall back: open a virtual port (no hardware) so the app still runs
