@@ -43,7 +43,7 @@ COOLDOWN_TIME = 300     # keep installation on this long after the last song, th
 # Playing one song costs SONG_PRICE_CENTS (default 0.50 EUR). A 2 EUR coin
 # (6 pulses) adds 200 ct, so 4 songs can be queued/played.
 COIN_SOURCE = "gpio"          # "gpio" (JY-616 NO contact) or "serial"
-COIN_GPIO = 23                # BCM pin reading the COIN output
+COIN_GPIO = 24                # BCM pin reading the COIN output
 COIN_PULL_UP = True           # internal pull-up; NO switch pulls the pin LOW
 COIN_ACTIVE_HIGH = False      # NO switch to GND -> pulse is LOW-true
 COIN_DEBOUNCE = 0.02          # gpiozero bounce_time (s) to filter contact bounce
