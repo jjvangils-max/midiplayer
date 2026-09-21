@@ -33,6 +33,10 @@ class Wiring:
         self.win.update_balance(balance_cents)
     def on_relay(self, on):
         self.win.set_status_key("relay_on" if on else "relay_off")
+        self.win.set_screen_awake(on)
+    def on_coin_value(self, cents):
+        if cents and not self.hw.is_relay_on():
+            self.win.show_welcome()
 
     # state machine signals
     def on_state_change(self, state, **info):
@@ -100,16 +104,13 @@ def main():
     class _HwWiring:
         on_coin = wiring.on_coin
         on_relay = wiring.on_relay
-        def on_coin_value(self, cents):
-            pass
+        on_coin_value = wiring.on_coin_value
     hw.signals = _HwWiring()
 
     sm.start()
 
     # Wire GUI -> state machine
     win.signals.play_requested.connect(sm.request_play)
-    win.signals.queue_requested.connect(sm.queue_next)
-    win.signals.stop_requested.connect(sm.stop_now)
 
     # USB monitor (thread)
     class _UsbWiring:

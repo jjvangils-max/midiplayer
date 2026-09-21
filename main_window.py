@@ -2,28 +2,26 @@
 
 Layout:
   +----------------------------------------------------------+
-  | Title            Credits: N            [🇬🇧 EN] [🇫🇷 FR]   |  top bar
-  +-------------------+--------------------------------------+
-  |  Song list (8     |  Information panel                    |
-  |  big buttons,    |  (title/artist/copyright/tempo/       |
-  |  2 x 4 grid)     |   length/tracks)                      |
-  |                   |                                       |
-  |                   |  Now playing: ...                     |
-  |                   |  Up next: ...                         |
-  |  [◀]  Page 1/3   |                                       |
-  |  [▶]              |  [      PLAY      ]  [    STOP    ]   |
-  +-------------------+--------------------------------------+
-  | status bar: "Waiting for startup…"  /  relay state        |
+  | Title            Balance: 0.00       [🇬🇧 EN] [🇫🇷 FR]   |  top bar
+  |  Song list (9 big buttons, 3 x 3 grid)                   |
+  |                                                           |
+  |  [◀]  Page 1/3 [▶]                    [      PLAY      ]  |
+  |  Now playing: ...                Up next: ...             |
   +----------------------------------------------------------+
+  | status bar: countdown / relay state                       |
+  +----------------------------------------------------------+
+
+The screen dims to near-black when the installation powers down (relay off)
+and wakes with a French welcome message when a coin is inserted.
 """
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QObject, Slot, QMetaObject, Q_ARG
-from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt, Signal, QObject, Slot, QMetaObject, Q_ARG, QTimer
+from PySide6.QtGui import QFont, QPainter, QColor
 from PySide6.QtWidgets import (
     QApplication, QWidget, QMainWindow, QLabel, QPushButton, QGridLayout,
-    QVBoxLayout, QHBoxLayout, QTextEdit, QFrame, QSizePolicy,
+    QVBoxLayout, QHBoxLayout, QFrame, QSizePolicy,
 )
 
 import config
@@ -62,8 +60,6 @@ def _btn_font(pt):
 
 class WindowSignals(QObject):
     play_requested = Signal(str)        # song path
-    queue_requested = Signal(str)       # song path
-    stop_requested = Signal()
     language_changed = Signal(str)     # 'en' or 'fr'
     usb_import_answer = Signal(bool, str)  # yes/no, mount path
 
@@ -82,6 +78,9 @@ class MainWindow(QMainWindow):
         self._status_key = "insert_coin"
         self._status_kwargs = {}
         self._last_balance_cents = 0
+        self._awake = True
+        self._dim_overlay = None
+        self._welcome_overlay = None
         self._init_ui()
         self.refresh_library()
         self._hold_detector = None
@@ -103,6 +102,10 @@ class MainWindow(QMainWindow):
         self._countdown_timer = QTimer(self)
         self._countdown_timer.timeout.connect(self._tick_countdown)
         self._countdown_timer.start(1000)
+        # Screen sleep: wake overlay with French welcome on a coin insert.
+        self._welcome_timer = QTimer(self)
+        self._welcome_timer.setSingleShot(True)
+        self._welcome_timer.timeout.connect(self._hide_welcome)
 
     def _maybe_refresh_info(self):
         # Once the background preload has checked all songs, drop any corrupt
@@ -114,13 +117,6 @@ class MainWindow(QMainWindow):
                 self.songs = valid
                 self.selected_index = -1
                 self._render_page()
-        # Re-render the info panel if the selected song's metadata just became
-        # available from the background preload.
-        if 0 <= self.selected_index < len(self.songs):
-            s = self.songs[self.selected_index]
-            if s.meta_loaded and not getattr(self, "_info_rendered_for", None) == s.path:
-                self._info_rendered_for = s.path
-                self._update_info()
 
     # ---- UI ---------------------------------------------------------------
     def _init_ui(self):
@@ -133,13 +129,9 @@ class MainWindow(QMainWindow):
         root.setSpacing(8)
 
         root.addLayout(self._top_bar())
-
-        body = QHBoxLayout()
-        body.setSpacing(8)
-        body.addLayout(self._left_panel(), 1)
-        body.addLayout(self._right_panel(), 1)
-        root.addLayout(body, 1)
-
+        root.addLayout(self._song_panel(), 1)
+        root.addLayout(self._nav_row())
+        root.addWidget(self._now_row())
         root.addWidget(self._status_bar())
 
     def _top_bar(self):
@@ -168,14 +160,14 @@ class MainWindow(QMainWindow):
         bar.addWidget(self.flag_fr)
         return bar
 
-    def _left_panel(self):
+    def _song_panel(self):
         col = QVBoxLayout()
         col.setSpacing(6)
         self.song_grid = QGridLayout()
         self.song_grid.setSpacing(6)
         self.song_buttons = []
         for i in range(config.SONGS_PER_PAGE):
-            r, c = divmod(i, 2)  # 2 columns x 4 rows
+            r, c = divmod(i, 3)  # 3 columns x 3 rows
             b = QPushButton("")
             b.setObjectName("songBtn")
             b.setCheckable(True)
@@ -186,13 +178,15 @@ class MainWindow(QMainWindow):
             self.song_grid.addWidget(b, r, c)
             self.song_buttons.append(b)
         col.addLayout(self.song_grid, 1)
+        return col
 
+    def _nav_row(self):
         nav = QHBoxLayout()
         nav.setSpacing(6)
         self.prev_btn = QPushButton(i18n.t("prev"))
         self.prev_btn.setObjectName("navBtn")
         self.prev_btn.setFont(_btn_font(20))
-        self.prev_btn.setFixedHeight(56)
+        self.prev_btn.setFixedHeight(64)
         self.prev_btn.clicked.connect(self._prev_page)
         self.page_lbl = QLabel("1/1")
         self.page_lbl.setObjectName("section")
@@ -201,64 +195,37 @@ class MainWindow(QMainWindow):
         self.next_btn = QPushButton(i18n.t("next"))
         self.next_btn.setObjectName("navBtn")
         self.next_btn.setFont(_btn_font(20))
-        self.next_btn.setFixedHeight(56)
+        self.next_btn.setFixedHeight(64)
         self.next_btn.clicked.connect(self._next_page)
         nav.addWidget(self.prev_btn)
         nav.addWidget(self.page_lbl, 1)
         nav.addWidget(self.next_btn)
-        col.addLayout(nav)
-        return col
+        nav.addStretch(1)
+        self.play_btn = QPushButton(i18n.t("play"))
+        self.play_btn.setObjectName("playBtn")
+        self.play_btn.setFont(_btn_font(28))
+        self.play_btn.setFixedHeight(64)
+        self.play_btn.setMinimumWidth(260)
+        self.play_btn.setEnabled(False)
+        self.play_btn.clicked.connect(self._on_play)
+        nav.addWidget(self.play_btn)
+        return nav
 
-    def _right_panel(self):
-        col = QVBoxLayout()
-        col.setSpacing(8)
-
-        sec = QLabel(i18n.t("info"))
-        sec.setObjectName("section")
-        col.addWidget(sec)
-
-        self.info_edit = QTextEdit()
-        self.info_edit.setReadOnly(True)
-        self.info_edit.setFont(_btn_font(16))
-        col.addWidget(self.info_edit, 2)
-
+    def _now_row(self):
+        row = QWidget()
+        h = QHBoxLayout(row)
+        h.setContentsMargins(0, 0, 0, 0)
         self.now_lbl = QLabel(i18n.t("now_playing") + " " + i18n.t("queue_empty"))
         self.now_lbl.setObjectName("nowplaying")
         self.now_lbl.setWordWrap(True)
         self.now_lbl.setFont(_btn_font(16))
-        col.addWidget(self.now_lbl)
-
         self.next_lbl = QLabel(i18n.t("up_next") + " " + i18n.t("queue_empty"))
         self.next_lbl.setObjectName("nowplaying")
         self.next_lbl.setWordWrap(True)
         self.next_lbl.setFont(_btn_font(14))
-        col.addWidget(self.next_lbl)
-
-        ctrls = QHBoxLayout()
-        ctrls.setSpacing(10)
-        self.play_btn = QPushButton(i18n.t("play"))
-        self.play_btn.setObjectName("playBtn")
-        self.play_btn.setFont(_btn_font(28))
-        self.play_btn.setMinimumHeight(110)
-        self.play_btn.setEnabled(False)
-        self.play_btn.clicked.connect(self._on_play)
-        self.stop_btn = QPushButton(i18n.t("stop"))
-        self.stop_btn.setObjectName("stopBtn")
-        self.stop_btn.setFont(_btn_font(22))
-        self.stop_btn.setMinimumHeight(110)
-        self.stop_btn.setEnabled(False)
-        self.stop_btn.clicked.connect(self._on_stop)
-        ctrls.addWidget(self.play_btn, 3)
-        ctrls.addWidget(self.stop_btn, 2)
-        col.addLayout(ctrls)
-
-        self.queue_btn = QPushButton(i18n.t("add_to_queue"))
-        self.queue_btn.setFont(_btn_font(16))
-        self.queue_btn.setMinimumHeight(64)
-        self.queue_btn.setEnabled(False)
-        self.queue_btn.clicked.connect(self._on_queue)
-        col.addWidget(self.queue_btn)
-        return col
+        h.addWidget(self.now_lbl, 1)
+        h.addWidget(self.next_lbl, 1)
+        return row
 
     def _status_bar(self):
         self.status_lbl = QLabel("")
@@ -299,7 +266,6 @@ class MainWindow(QMainWindow):
                 b.setEnabled(False)
                 b.setChecked(False)
         self.selected_index = -1
-        self._update_info()
         self._update_play_enabled()
 
     def _prev_page(self):
@@ -325,49 +291,18 @@ class MainWindow(QMainWindow):
         if idx >= len(self.songs):
             return
         self.selected_index = idx
-        self._info_rendered_for = None
         for i, b in enumerate(self.song_buttons):
             b.setChecked(i == visible_idx)
-        self._update_info()
         self._update_play_enabled()
-
-    def _update_info(self):
-        if 0 <= self.selected_index < len(self.songs):
-            s = self.songs[self.selected_index]
-            if not s.meta_loaded:
-                # Metadata not parsed yet (background preload still running).
-                # Show a placeholder and let the preload thread fill it; do
-                # NOT parse on the GUI thread (that was the stutter cause).
-                self.info_edit.setPlainText(i18n.t("info") + "…")
-                return
-            rows = [
-                f"{i18n.t('midi_title')}: {s.title or i18n.t('midi_unknown')}",
-                f"{i18n.t('midi_artist')}: {s.artist or i18n.t('midi_unknown')}",
-                f"{i18n.t('midi_copyright')}: {s.copyright or i18n.t('midi_unknown')}",
-                f"{i18n.t('midi_tempo')}: {s.tempo or i18n.t('midi_unknown')} BPM",
-                f"{i18n.t('midi_length')}: {int(s.length//60):02d}:{int(s.length%60):02d}",
-                f"{i18n.t('midi_tracks')}: {s.tracks}",
-            ]
-            self.info_edit.setPlainText("\n".join(rows))
-        else:
-            self.info_edit.setPlainText(i18n.t("no_song_selected"))
 
     def _update_play_enabled(self):
         has_sel = 0 <= self.selected_index < len(self.songs)
         self.play_btn.setEnabled(has_sel)
-        self.queue_btn.setEnabled(has_sel)
 
     # ---- actions ----------------------------------------------------------
     def _on_play(self):
         if 0 <= self.selected_index < len(self.songs):
             self.signals.play_requested.emit(self.songs[self.selected_index].path)
-
-    def _on_queue(self):
-        if 0 <= self.selected_index < len(self.songs):
-            self.signals.queue_requested.emit(self.songs[self.selected_index].path)
-
-    def _on_stop(self):
-        self.signals.stop_requested.emit()
 
     # ---- language ---------------------------------------------------------
     def _set_language(self, lang):
@@ -377,11 +312,8 @@ class MainWindow(QMainWindow):
         self.prev_btn.setText(i18n.t("prev"))
         self.next_btn.setText(i18n.t("next"))
         self.play_btn.setText(i18n.t("play"))
-        self.stop_btn.setText(i18n.t("stop"))
-        self.queue_btn.setText(i18n.t("add_to_queue"))
         # section labels re-render
         self._render_page()
-        self._update_info()
         self._update_balance(getattr(self, "_last_balance_cents", 0))
         self._render_now()
         self._render_next()
@@ -467,7 +399,79 @@ class MainWindow(QMainWindow):
 
     @Slot(bool)
     def _slot_playing(self, playing):
-        self.stop_btn.setEnabled(playing)
+        pass
+
+    # ---- screen sleep / wake ------------------------------------------------
+    def set_screen_awake(self, awake):
+        QMetaObject.invokeMethod(self, "_slot_screen_awake", Qt.QueuedConnection,
+                                 Q_ARG(bool, bool(awake)))
+
+    @Slot(bool)
+    def _slot_screen_awake(self, awake):
+        if awake == self._awake:
+            return
+        self._awake = awake
+        if awake:
+            self._remove_dim()
+        else:
+            self._apply_dim()
+
+    def _apply_dim(self):
+        if getattr(self, "_dim_overlay", None) is not None:
+            return
+        from PySide6.QtWidgets import QWidget as _W
+        overlay = _W(self)
+        overlay.setObjectName("dimOverlay")
+        overlay.setStyleSheet("background: #000000;")
+        overlay.setGeometry(self.rect())
+        overlay.show()
+        overlay.raise_()
+        self._dim_overlay = overlay
+
+    def _remove_dim(self):
+        ov = getattr(self, "_dim_overlay", None)
+        if ov is not None:
+            ov.deleteLater()
+            self._dim_overlay = None
+
+    def resizeEvent(self, event):
+        ov = getattr(self, "_dim_overlay", None)
+        if ov is not None:
+            ov.setGeometry(self.rect())
+        super().resizeEvent(event)
+
+    def show_welcome(self):
+        QMetaObject.invokeMethod(self, "_slot_show_welcome", Qt.QueuedConnection)
+
+    @Slot()
+    def _slot_show_welcome(self):
+        self._slot_screen_awake(True)
+        if self._welcome_overlay is not None:
+            self._welcome_timer.stop()
+            self._welcome_overlay.deleteLater()
+        from PySide6.QtWidgets import QWidget as _W
+        overlay = _W(self)
+        overlay.setStyleSheet("background: #000000;")
+        overlay.setGeometry(self.rect())
+        lay = QVBoxLayout(overlay)
+        lay.addStretch(1)
+        msg = QLabel(i18n.t("welcome"))
+        msg.setStyleSheet("font-size: 44px; font-weight: bold; color: #ffd166;"
+                          "background: transparent;")
+        msg.setAlignment(Qt.AlignCenter)
+        lay.addWidget(msg)
+        lay.addStretch(1)
+        overlay.show()
+        overlay.raise_()
+        overlay.activateWindow()
+        self._welcome_overlay = overlay
+        self._welcome_timer.start(config.WELCOME_TIME * 1000)
+
+    @Slot()
+    def _hide_welcome(self):
+        if self._welcome_overlay is not None:
+            self._welcome_overlay.deleteLater()
+            self._welcome_overlay = None
 
     # ---- song countdown in the status bar --------------------------------
     def start_countdown(self, total_seconds):
