@@ -60,6 +60,7 @@ _STRINGS = {
         "admin_song_price": "Price per song",
         "playing_countdown": "Playing — {m}:{s} remaining",
         "welcome": "Bienvenue à notre orgue",
+        "welcome_sub": "Choisissez un morceau dans la liste et appuyez sur Lecture.",
     },
     "fr": {
         "title": "Lecteur MIDI",
@@ -120,6 +121,7 @@ _STRINGS = {
         "admin_song_price": "Prix par morceau",
         "playing_countdown": "Lecture — {m}:{s} restantes",
         "welcome": "Bienvenue à notre orgue",
+        "welcome_sub": "Choisissez un morceau dans la liste et appuyez sur Lecture.",
     },
 }
 

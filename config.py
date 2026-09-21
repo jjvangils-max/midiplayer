@@ -16,7 +16,7 @@ SETTINGS_FILE = APP_DIR / "settings.json"
 # --- Screen ---------------------------------------------------------------
 SCREEN_W = 1024
 SCREEN_H = 600
-SONGS_PER_PAGE = 9       # 3 columns x 3 rows
+SONGS_PER_PAGE = 12      # 3 columns x 4 rows
 
 # --- Timing (seconds) -----------------------------------------------------
 WARMUP_TIME = 15        # hold relay on, show countdown before first play
