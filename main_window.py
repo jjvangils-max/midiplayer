@@ -85,16 +85,24 @@ class MainWindow(QMainWindow):
         self._init_ui()
         self.refresh_library()
         self._hold_detector = None
-        # Hidden admin access: hold top-left corner 3s -> PIN -> settings.
+        # Hidden admin access: hold the app title 5s -> PIN -> settings.
         import admin
         self._hold_detector = admin.CornerHoldDetector(
             self, lambda: admin.open_admin_flow(self))
+        self.title_lbl.installEventFilter(self)
         # Periodically refresh the info panel so metadata filled by the
         # background preload appears without re-parsing on the GUI thread.
         from PySide6.QtCore import QTimer
         self._info_timer = QTimer(self)
         self._info_timer.timeout.connect(self._maybe_refresh_info)
         self._info_timer.start(500)
+        # Song countdown in the status bar while a song is playing.
+        self._song_total = 0.0
+        self._song_elapsed = 0.0
+        self._countdown_active = False
+        self._countdown_timer = QTimer(self)
+        self._countdown_timer.timeout.connect(self._tick_countdown)
+        self._countdown_timer.start(1000)
 
     def _maybe_refresh_info(self):
         # Once the background preload has checked all songs, drop any corrupt
@@ -461,6 +469,52 @@ class MainWindow(QMainWindow):
     def _slot_playing(self, playing):
         self.stop_btn.setEnabled(playing)
 
+    # ---- song countdown in the status bar --------------------------------
+    def start_countdown(self, total_seconds):
+        QMetaObject.invokeMethod(self, "_slot_start_countdown",
+                                  Qt.QueuedConnection, Q_ARG(float, float(total_seconds)))
+
+    @Slot(float)
+    def _slot_start_countdown(self, total_seconds):
+        self._song_total = max(0.0, total_seconds)
+        self._song_elapsed = 0.0
+        self._countdown_active = self._song_total > 0
+        if self._countdown_active:
+            self._render_countdown()
+
+    def stop_countdown(self):
+        QMetaObject.invokeMethod(self, "_slot_stop_countdown", Qt.QueuedConnection)
+
+    @Slot()
+    def _slot_stop_countdown(self):
+        self._countdown_active = False
+
+    def update_song_progress(self, elapsed_seconds):
+        QMetaObject.invokeMethod(self, "_slot_song_progress", Qt.QueuedConnection,
+                                 Q_ARG(float, float(elapsed_seconds)))
+
+    @Slot(float)
+    def _slot_song_progress(self, elapsed_seconds):
+        if not self._countdown_active:
+            return
+        self._song_elapsed = max(0.0, elapsed_seconds)
+        self._render_countdown()
+
+    def _tick_countdown(self):
+        if not self._countdown_active:
+            return
+        remaining = self._song_total - self._song_elapsed
+        if remaining <= 0:
+            return
+        self._render_countdown()
+
+    def _render_countdown(self):
+        remaining = max(0, int(round(self._song_total - self._song_elapsed)))
+        mm, ss = divmod(remaining, 60)
+        self._status_key = "playing_countdown"
+        self._status_kwargs = {"m": mm, "s": f"{ss:02d}"}
+        self._render_status()
+
     # ---- USB import dialog (invoked via queued meta call) -----------------
     @Slot(str)
     def _ask_usb_import(self, mount_path):
@@ -474,16 +528,15 @@ class MainWindow(QMainWindow):
         if msg.exec() == QMessageBox.Yes:
             self.signals.usb_import_answer.emit(True, mount_path)
 
-    # ---- hidden admin corner-hold ----------------------------------------
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton and self._hold_detector is not None:
-            self._hold_detector.press(event.position().toPoint())
-        super().mousePressEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        if self._hold_detector is not None:
-            self._hold_detector.release(event.position().toPoint())
-        super().mouseReleaseEvent(event)
+    # ---- hidden admin title-hold -----------------------------------------
+    def eventFilter(self, obj, event):
+        from PySide6.QtCore import QEvent
+        if obj is self.title_lbl and self._hold_detector is not None:
+            if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+                self._hold_detector.press()
+            elif event.type() == QEvent.MouseButtonRelease:
+                self._hold_detector.release()
+        return super().eventFilter(obj, event)
 
 
 def build_app(argv):

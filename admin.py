@@ -1,9 +1,10 @@
 """Hidden admin access: PIN screen + settings dialog.
 
-Triggered by pressing and holding the top-left corner of the kiosk for
-3 seconds. After PIN 3082, an admin can rename song display names, delete
-MIDI files, and edit MIDI metadata (title/artist/copyright/tempo) which is
-written back into the .mid file via mido.
+Triggered by pressing and holding the app title ("MIDI Player" / "Lecteur
+MIDI", top-left) for 5 seconds. After PIN 3082, an admin can rename song
+display names, delete MIDI files, edit MIDI metadata (title/artist/
+copyright/tempo, written back into the .mid file via mido), and change the
+song price.
 """
 
 import os
@@ -15,7 +16,7 @@ import i18n
 log = logging.getLogger("midiplayer.admin")
 
 ADMIN_PIN = "3082"
-HOLD_SECONDS = 3.0
+HOLD_SECONDS = 5.0
 
 
 def _qt():
@@ -23,13 +24,15 @@ def _qt():
     from PySide6.QtWidgets import (
         QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
         QListWidget, QListWidgetItem, QMessageBox, QFormLayout, QSpinBox,
+        QComboBox,
     )
     return Qt, QTimer, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, \
-        QPushButton, QListWidget, QListWidgetItem, QMessageBox, QFormLayout, QSpinBox
+        QPushButton, QListWidget, QListWidgetItem, QMessageBox, QFormLayout, \
+        QSpinBox, QComboBox
 
 
 class CornerHoldDetector:
-    """Detects a 3-second hold in the top-left corner of a window."""
+    """Detects a 5-second press-and-hold on a given widget (the app title)."""
 
     def __init__(self, window, on_hold):
         self.window = window
@@ -37,15 +40,11 @@ class CornerHoldDetector:
         self._timer = None
         self._active = False
 
-    def press(self, pos):
-        corner = min(self.window.width(), self.window.height()) // 4
-        if pos.x() < corner and pos.y() < corner:
-            self._active = True
-            self._start()
-        else:
-            self._cancel()
+    def press(self, pos=None):
+        self._active = True
+        self._start()
 
-    def release(self, pos):
+    def release(self, pos=None):
         self._cancel()
 
     def _start(self):
@@ -211,9 +210,10 @@ def _build_pin_dialog():
 def _build_settings_dialog():
     Qt, QTimer, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, \
         QPushButton, QListWidget, QListWidgetItem, QMessageBox, QFormLayout, \
-        QSpinBox = _qt()
+        QSpinBox, QComboBox = _qt()
 
     import midi_library
+    import settings
 
     class _Impl(QDialog):
         def __init__(self, parent=None):
@@ -222,6 +222,9 @@ def _build_settings_dialog():
             self.setModal(True)
             self.resize(config.SCREEN_W - 80, config.SCREEN_H - 80)
             self._songs = []
+
+            # Song price: which balance is needed to play one song.
+            current_price = settings.get_song_price_cents()
 
             layout = QVBoxLayout(self)
 
@@ -276,6 +279,18 @@ def _build_settings_dialog():
             save_btn.setStyleSheet("font-size: 18px;")
             save_btn.clicked.connect(self._save_meta)
             right.addWidget(save_btn)
+
+            price_lbl = QLabel(i18n.t("admin_song_price"))
+            price_lbl.setStyleSheet("font-size: 16px; color: #88a0b0;")
+            right.addWidget(price_lbl)
+            self.price_combo = QComboBox()
+            for cents in settings.PRICE_OPTIONS:
+                self.price_combo.addItem(f"€ {cents / 100:.2f}", cents)
+            idx = self.price_combo.findData(current_price)
+            self.price_combo.setCurrentIndex(idx if idx >= 0 else 0)
+            self.price_combo.setStyleSheet("font-size: 18px;")
+            self.price_combo.currentIndexChanged.connect(self._on_price_changed)
+            right.addWidget(self.price_combo)
             right.addStretch(1)
             body.addLayout(right, 1)
             layout.addLayout(body, 1)
@@ -286,6 +301,13 @@ def _build_settings_dialog():
             layout.addWidget(close_btn)
 
             self._reload()
+
+        def _on_price_changed(self, index):
+            cents = self.price_combo.itemData(index)
+            if cents is None:
+                return
+            settings.set_song_price_cents(cents)
+            self.status_lbl.setText(i18n.t("admin_saved"))
 
         def _reload(self):
             self._songs = midi_library.scan_midi()

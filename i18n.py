@@ -57,6 +57,8 @@ _STRINGS = {
         "admin_deleted": "Deleted",
         "admin_edit_meta": "Edit MIDI info",
         "admin_confirm_delete": "Delete this file?",
+        "admin_song_price": "Price per song",
+        "playing_countdown": "Playing — {m}:{s} remaining",
     },
     "fr": {
         "title": "Lecteur MIDI",
@@ -114,6 +116,8 @@ _STRINGS = {
         "admin_deleted": "Supprimé",
         "admin_edit_meta": "Modifier les infos MIDI",
         "admin_confirm_delete": "Supprimer ce fichier ?",
+        "admin_song_price": "Prix par morceau",
+        "playing_countdown": "Lecture — {m}:{s} restantes",
     },
 }
 

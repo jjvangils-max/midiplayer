@@ -25,6 +25,8 @@ class StateSignals:
     def on_status(self, text): pass
     def on_now_playing(self, song_name): pass
     def on_queue_change(self, queue): pass
+    def on_song_length(self, seconds): pass
+    def on_song_progress(self, seconds): pass
 
 
 STATE_IDLE = "idle"
@@ -60,7 +62,10 @@ class PlayerStateMachine(threading.Thread):
                 if state == "finished":
                     s.outer._song_finished.set()
                 s.outer.signals.on_state_change(state)
-            def on_progress(s, seconds): pass
+            def on_progress(s, seconds):
+                s.outer.signals.on_song_progress(seconds)
+            def on_song_length(s, seconds):
+                s.outer.signals.on_song_length(seconds)
             def on_error(s, msg):
                 s.outer.signals.on_status(msg)
         self.midi.signals = _M(self)
