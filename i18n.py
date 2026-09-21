@@ -59,6 +59,7 @@ _STRINGS = {
         "admin_confirm_delete": "Delete this file?",
         "admin_song_price": "Price per song",
         "playing_countdown": "Playing — {m}:{s} remaining",
+        "welcome": "Bienvenue à notre orgue",
     },
     "fr": {
         "title": "Lecteur MIDI",
@@ -118,6 +119,7 @@ _STRINGS = {
         "admin_confirm_delete": "Supprimer ce fichier ?",
         "admin_song_price": "Prix par morceau",
         "playing_countdown": "Lecture — {m}:{s} restantes",
+        "welcome": "Bienvenue à notre orgue",
     },
 }
 
