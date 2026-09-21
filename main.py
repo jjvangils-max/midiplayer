@@ -40,12 +40,17 @@ class Wiring:
             self.win.set_playing(True)
         elif state in ("stopped", "finished", "error", "idle"):
             self.win.set_playing(False)
+            self.win.stop_countdown()
     def on_status(self, key, **kwargs):
         self.win.set_status_key(key, **kwargs)
     def on_now_playing(self, name):
         self.win.update_now_playing(name)
     def on_queue_change(self, queue):
         self.win.update_queue(queue)
+    def on_song_length(self, seconds):
+        self.win.start_countdown(seconds)
+    def on_song_progress(self, seconds):
+        self.win.update_song_progress(seconds)
 
     # usb signals
     def on_usb_inserted(self, mount_path):
@@ -87,6 +92,8 @@ def main():
         on_status = wiring.on_status
         on_now_playing = wiring.on_now_playing
         on_queue_change = wiring.on_queue_change
+        on_song_length = wiring.on_song_length
+        on_song_progress = wiring.on_song_progress
     sm = PlayerStateMachine(mp, hw, signals=_StateWiring())
     wiring.sm = sm
 

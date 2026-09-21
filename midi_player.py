@@ -54,6 +54,7 @@ class MidiPlayerSignals:
     """Callbacks the GUI/state machine subscribes to (override these)."""
     def on_state(self, state): pass       # state: 'playing','stopped','finished','error'
     def on_progress(self, seconds): pass
+    def on_song_length(self, seconds): pass
     def on_error(self, msg): pass
 
 
@@ -137,6 +138,10 @@ class MidiPlayer(threading.Thread):
             self.signals.on_state("error")
             return
 
+        try:
+            self.signals.on_song_length(float(mid.length))
+        except Exception:
+            self.signals.on_song_length(0.0)
         self.signals.on_state("playing")
         start = time.time()
         last_progress = 0.0
