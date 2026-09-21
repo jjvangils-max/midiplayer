@@ -167,13 +167,13 @@ class MainWindow(QMainWindow):
         self.song_grid.setSpacing(6)
         self.song_buttons = []
         for i in range(config.SONGS_PER_PAGE):
-            r, c = divmod(i, 3)  # 3 columns x 3 rows
+            r, c = divmod(i, 3)  # 3 columns x 4 rows
             b = QPushButton("")
             b.setObjectName("songBtn")
             b.setCheckable(True)
             b.setFont(_btn_font(16))
             b.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-            b.setMinimumHeight(88)
+            b.setMinimumHeight(78)
             b.clicked.connect(lambda _, idx=i: self._select_visible(idx))
             self.song_grid.addWidget(b, r, c)
             self.song_buttons.append(b)
@@ -460,6 +460,12 @@ class MainWindow(QMainWindow):
                           "background: transparent;")
         msg.setAlignment(Qt.AlignCenter)
         lay.addWidget(msg)
+        sub = QLabel(i18n.t("welcome_sub"))
+        sub.setStyleSheet("font-size: 24px; color: #e8eef2;"
+                          "background: transparent;")
+        sub.setAlignment(Qt.AlignCenter)
+        sub.setWordWrap(True)
+        lay.addWidget(sub)
         lay.addStretch(1)
         overlay.show()
         overlay.raise_()
