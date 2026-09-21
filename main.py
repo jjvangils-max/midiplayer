@@ -144,6 +144,9 @@ def main():
     else:
         win.update_status(i18n.t("insert_coin") + "  (GPIO mock)")
 
+    # welcome overlay on startup
+    win.show_welcome()
+
     rc = app.exec()
     sm.shutdown()
     usb_mon.stop()
