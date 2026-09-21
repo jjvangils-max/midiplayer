@@ -201,6 +201,12 @@ class MainWindow(QMainWindow):
         nav.addWidget(self.page_lbl, 1)
         nav.addWidget(self.next_btn)
         nav.addStretch(1)
+        self.hint_lbl = QLabel(i18n.t("play_hint"))
+        self.hint_lbl.setObjectName("section")
+        self.hint_lbl.setWordWrap(True)
+        self.hint_lbl.setFont(_btn_font(12))
+        self.hint_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        nav.addWidget(self.hint_lbl, 1)
         self.play_btn = QPushButton(i18n.t("play"))
         self.play_btn.setObjectName("playBtn")
         self.play_btn.setFont(_btn_font(28))
@@ -312,6 +318,7 @@ class MainWindow(QMainWindow):
         self.prev_btn.setText(i18n.t("prev"))
         self.next_btn.setText(i18n.t("next"))
         self.play_btn.setText(i18n.t("play"))
+        self.hint_lbl.setText(i18n.t("play_hint"))
         # section labels re-render
         self._render_page()
         self._update_balance(getattr(self, "_last_balance_cents", 0))
@@ -471,7 +478,7 @@ class MainWindow(QMainWindow):
         overlay.raise_()
         overlay.activateWindow()
         self._welcome_overlay = overlay
-        self._welcome_timer.start(config.WELCOME_TIME * 1000)
+        self._welcome_timer.start(int(getattr(config, "WELCOME_TIME", 3)) * 1000)
 
     @Slot()
     def _hide_welcome(self):
