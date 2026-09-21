@@ -61,6 +61,7 @@ _STRINGS = {
         "playing_countdown": "Playing — {m}:{s} remaining",
         "welcome": "Bienvenue à notre orgue",
         "welcome_sub": "Choisissez un morceau dans la liste et appuyez sur Lecture.",
+        "play_hint": "Choose a song from the list and press Play.",
     },
     "fr": {
         "title": "Lecteur MIDI",
@@ -122,6 +123,7 @@ _STRINGS = {
         "playing_countdown": "Lecture — {m}:{s} restantes",
         "welcome": "Bienvenue à notre orgue",
         "welcome_sub": "Choisissez un morceau dans la liste et appuyez sur Lecture.",
+        "play_hint": "Choisissez un morceau dans la liste et appuyez sur Lecture.",
     },
 }
 

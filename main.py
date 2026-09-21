@@ -35,7 +35,14 @@ class Wiring:
         self.win.set_status_key("relay_on" if on else "relay_off")
         self.win.set_screen_awake(on)
     def on_coin_value(self, cents):
-        if cents and not self.hw.is_relay_on():
+        if not cents:
+            return
+        # Show the welcome overlay whenever a coin arrives and nothing is
+        # playing (idle, or waiting in cooldown with the relay still on).
+        state = getattr(self.sm, "state", None) if self.sm is not None else None
+        if state is None:
+            state = "cooldown" if self.hw.is_relay_on() else "idle"
+        if state in ("idle", "cooldown"):
             self.win.show_welcome()
 
     # state machine signals
