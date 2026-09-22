@@ -37,13 +37,9 @@ class Wiring:
     def on_coin_value(self, cents):
         if not cents:
             return
-        # Show the welcome overlay whenever a coin arrives and nothing is
-        # playing (idle, or waiting in cooldown with the relay still on).
-        state = getattr(self.sm, "state", None) if self.sm is not None else None
-        if state is None:
-            state = "cooldown" if self.hw.is_relay_on() else "idle"
-        if state in ("idle", "cooldown"):
-            self.win.show_welcome()
+        # The welcome overlay only appears when the coin wakes the kiosk
+        # out of sleep (or the attract glow). Awake + interactive: credit only.
+        self.win.on_coin_inserted()
 
     # state machine signals
     def on_state_change(self, state, **info):
@@ -143,6 +139,12 @@ def main():
         win.set_status_key("insert_coin")
     else:
         win.update_status(i18n.t("insert_coin") + "  (GPIO mock)")
+
+    # welcome overlay on startup; _hide_welcome puts the screen to sleep
+    # afterwards (relay off + empty balance at boot)
+    win.hw = hw
+    win.sm = sm
+    win.show_welcome()
 
     rc = app.exec()
     sm.shutdown()

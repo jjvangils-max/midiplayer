@@ -58,6 +58,40 @@ def _btn_font(pt):
     f = QFont(); f.setPointSize(pt); f.setBold(True); return f
 
 
+def _screen_power(on):
+    """Put the physical display to sleep / wake it (DPMS-style).
+
+    On a Raspberry Pi with a touchscreen this drives the standard backlight/
+    blanking interface; failures are ignored so a dev machine just keeps the
+    software dim overlay behaviour.
+    """
+    import subprocess
+    cmds = (
+        ["vcgencmd", "display_power", "1" if on else "0"],
+        ["sudo", "-n", "sh", "-c",
+         f"echo {1 if on else 0} > /sys/class/graphics/fb0/blank"],
+    )
+    for cmd in cmds:
+        try:
+            subprocess.run(cmd, check=True, timeout=3,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return
+        except Exception:
+            continue
+
+
+def _shutdown_pi():
+    """Power off the Raspberry Pi (from the admin menu)."""
+    import subprocess
+    for cmd in (["sudo", "-n", "poweroff"], ["sudo", "-n", "shutdown", "-h", "now"]):
+        try:
+            subprocess.run(cmd, check=True, timeout=5)
+            return True
+        except Exception:
+            continue
+    return False
+
+
 class WindowSignals(QObject):
     play_requested = Signal(str)        # song path
     language_changed = Signal(str)     # 'en' or 'fr'
@@ -81,6 +115,7 @@ class MainWindow(QMainWindow):
         self._awake = True
         self._dim_overlay = None
         self._welcome_overlay = None
+        self._attract_overlay = None
         self._init_ui()
         self.refresh_library()
         self._hold_detector = None
@@ -106,6 +141,14 @@ class MainWindow(QMainWindow):
         self._welcome_timer = QTimer(self)
         self._welcome_timer.setSingleShot(True)
         self._welcome_timer.timeout.connect(self._hide_welcome)
+        # Attract cycle: while idle/asleep, light the screen every
+        # ATTRACT_INTERVAL for ATTRACT_DURATION with a coin invitation.
+        self._attract_timer = QTimer(self)
+        self._attract_timer.timeout.connect(self._show_attract)
+        self._attract_timer.start(config.ATTRACT_INTERVAL * 1000)
+        self._attract_hide_timer = QTimer(self)
+        self._attract_hide_timer.setSingleShot(True)
+        self._attract_hide_timer.timeout.connect(self._hide_attract)
 
     def _maybe_refresh_info(self):
         # Once the background preload has checked all songs, drop any corrupt
@@ -409,6 +452,28 @@ class MainWindow(QMainWindow):
         pass
 
     # ---- screen sleep / wake ------------------------------------------------
+    def is_asleep(self):
+        return not self._awake
+
+    def on_coin_inserted(self):
+        """A coin was accepted: wake the kiosk and show the welcome overlay.
+
+        Called on the GUI thread (wiring marshals this). Only when the screen
+        was asleep (dimmed) or showing the attract glow; if the kiosk is
+        already awake and interactive, the coin just adds credit silently.
+        """
+        QMetaObject.invokeMethod(self, "_slot_coin_inserted", Qt.QueuedConnection)
+
+    @Slot()
+    def _slot_coin_inserted(self):
+        attract_visible = getattr(self, "_attract_overlay", None) is not None
+        if self._awake and not attract_visible:
+            return
+        if attract_visible:
+            self._attract_hide_timer.stop()
+            self._hide_attract_overlay_only()
+        self.show_welcome()
+
     def set_screen_awake(self, awake):
         QMetaObject.invokeMethod(self, "_slot_screen_awake", Qt.QueuedConnection,
                                  Q_ARG(bool, bool(awake)))
@@ -419,9 +484,13 @@ class MainWindow(QMainWindow):
             return
         self._awake = awake
         if awake:
+            self._attract_hide_timer.stop()
+            self._hide_attract_overlay_only()
             self._remove_dim()
+            _screen_power(True)
         else:
             self._apply_dim()
+            _screen_power(False)
 
     def _apply_dim(self):
         if getattr(self, "_dim_overlay", None) is not None:
@@ -485,6 +554,62 @@ class MainWindow(QMainWindow):
         if self._welcome_overlay is not None:
             self._welcome_overlay.deleteLater()
             self._welcome_overlay = None
+        # After the welcome: sleep again when the motor is off and no credit
+        # is left (e.g. at startup, or a wake without a usable coin).
+        hw = getattr(self, "hw", None)
+        if hw is not None and not hw.is_relay_on() \
+                and getattr(hw, "balance_cents", 0) <= 0:
+            self._slot_screen_awake(False)
+
+    # ---- attract cycle -------------------------------------------------------
+    def _show_attract(self):
+        if getattr(self, "_awake", True) or self._welcome_overlay is not None:
+            return
+        # Wake the screen first (this also clears a stale attract overlay),
+        # then show the attract message and arm its hide timer.
+        self._slot_screen_awake(True)
+        import settings
+        price = settings.get_song_price_cents()
+        amount = f"{price / 100:.2f}".replace(".", ",")
+        self._attract_overlay = self._make_center_overlay(
+            i18n.t("attract_msg", amount=amount))
+        self._attract_hide_timer.start(config.ATTRACT_DURATION * 1000)
+
+    @Slot()
+    def _hide_attract(self):
+        self._hide_attract_overlay_only()
+        self._slot_screen_awake(False)
+
+    def _hide_attract_overlay_only(self):
+        ov = getattr(self, "_attract_overlay", None)
+        if ov is not None:
+            ov.deleteLater()
+            self._attract_overlay = None
+
+    def _make_center_overlay(self, text, sub=None):
+        from PySide6.QtWidgets import QWidget as _W
+        overlay = _W(self)
+        overlay.setStyleSheet("background: #000000;")
+        overlay.setGeometry(self.rect())
+        lay = QVBoxLayout(overlay)
+        lay.addStretch(1)
+        msg = QLabel(text)
+        msg.setStyleSheet("font-size: 36px; font-weight: bold; color: #ffd166;"
+                          "background: transparent;")
+        msg.setAlignment(Qt.AlignCenter)
+        msg.setWordWrap(True)
+        lay.addWidget(msg)
+        if sub:
+            s = QLabel(sub)
+            s.setStyleSheet("font-size: 22px; color: #e8eef2;"
+                            "background: transparent;")
+            s.setAlignment(Qt.AlignCenter)
+            s.setWordWrap(True)
+            lay.addWidget(s)
+        lay.addStretch(1)
+        overlay.show()
+        overlay.raise_()
+        return overlay
 
     # ---- song countdown in the status bar --------------------------------
     def start_countdown(self, total_seconds):
