@@ -19,7 +19,7 @@ SCREEN_H = 600
 SONGS_PER_PAGE = 12      # 3 columns x 4 rows
 
 # --- Timing (seconds) -----------------------------------------------------
-WARMUP_TIME = 15        # hold relay on, show countdown before first play
+WARMUP_TIME = 20        # hold relay on, show countdown before first play
 GAP_TIME = 10           # pause between songs
 COOLDOWN_TIME = 300     # keep installation on this long after the last song, then relay off
 WELCOME_TIME = 6        # show the welcome overlay this long (coin insert / startup)
