@@ -300,6 +300,13 @@ def _build_settings_dialog():
             close_btn.clicked.connect(self.accept)
             layout.addWidget(close_btn)
 
+            self.shutdown_btn = QPushButton(i18n.t("admin_shutdown"))
+            self.shutdown_btn.setStyleSheet(
+                "font-size: 18px; background: #7a1b1b; border: 2px solid #d93939;"
+                "color: white;")
+            self.shutdown_btn.clicked.connect(self._shutdown)
+            layout.addWidget(self.shutdown_btn)
+
             self._reload()
 
         def _on_price_changed(self, index):
@@ -371,6 +378,16 @@ def _build_settings_dialog():
                     self._reload()
                 except Exception as e:
                     QMessageBox.critical(self, i18n.t("admin_rename"), str(e))
+
+        def _shutdown(self):
+            if QMessageBox.question(self, i18n.t("admin_shutdown"),
+                                    i18n.t("admin_shutdown_confirm")) \
+                    != QMessageBox.StandardButton.Yes:
+                return
+            from main_window import _shutdown_pi
+            if not _shutdown_pi():
+                QMessageBox.critical(self, i18n.t("admin_shutdown"),
+                                     i18n.t("admin_shutdown_err"))
 
         def _delete(self):
             song = self._current_song()

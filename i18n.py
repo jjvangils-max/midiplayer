@@ -62,6 +62,10 @@ _STRINGS = {
         "welcome": "Bienvenue à notre orgue",
         "welcome_sub": "Choisissez un morceau dans la liste et appuyez sur Lecture.",
         "play_hint": "Choose a song from the list and press Play.",
+        "attract_msg": "Insert €{amount} to let the organ play a piece of music.",
+        "admin_shutdown": "Shut down the Raspberry Pi",
+        "admin_shutdown_confirm": "Shut down the Raspberry Pi now?",
+        "admin_shutdown_err": "Shutdown failed (missing sudo permission?)",
     },
     "fr": {
         "title": "Lecteur MIDI",
@@ -124,6 +128,10 @@ _STRINGS = {
         "welcome": "Bienvenue à notre orgue",
         "welcome_sub": "Choisissez un morceau dans la liste et appuyez sur Lecture.",
         "play_hint": "Choisissez un morceau dans la liste et appuyez sur Lecture.",
+        "attract_msg": "Insérez {amount} € pour faire jouer un morceau à l'orgue.",
+        "admin_shutdown": "Éteindre le Raspberry Pi",
+        "admin_shutdown_confirm": "Éteindre le Raspberry Pi maintenant ?",
+        "admin_shutdown_err": "Échec de l'arrêt (permission sudo manquante ?)",
     },
 }
 

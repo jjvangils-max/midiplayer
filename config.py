@@ -21,8 +21,10 @@ SONGS_PER_PAGE = 12      # 3 columns x 4 rows
 # --- Timing (seconds) -----------------------------------------------------
 WARMUP_TIME = 20        # hold relay on, show countdown before first play
 GAP_TIME = 10           # pause between songs
-COOLDOWN_TIME = 300     # keep installation on this long after the last song, then relay off
-WELCOME_TIME = 6        # show the welcome overlay this long (coin insert / startup)
+COOLDOWN_TIME = 180     # keep installation on this long after the last song, then relay off
+WELCOME_TIME = 5        # show the welcome overlay this long (coin insert / startup)
+ATTRACT_INTERVAL = 300  # every 5 minutes, light the screen with the attract message
+ATTRACT_DURATION = 30   # the attract message stays on screen this long
 
 # --- Coin mechanism: JY-616 on a GPIO input (NO contact, pull-up) ----------
 # The JY-616 COIN output is a small switch (set to NO = normally open): in
