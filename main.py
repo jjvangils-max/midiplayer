@@ -140,10 +140,7 @@ def main():
     else:
         win.update_status(i18n.t("insert_coin") + "  (GPIO mock)")
 
-    # welcome overlay on startup; _hide_welcome puts the screen to sleep
-    # afterwards (relay off + empty balance at boot)
-    win.hw = hw
-    win.sm = sm
+    # welcome overlay on startup
     win.show_welcome()
 
     rc = app.exec()
