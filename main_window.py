@@ -63,15 +63,19 @@ def _screen_power(on):
 
     Strategy (first that works wins):
       1. backlight sysfs (/sys/class/backlight/*/bl_power and brightness):
-         the standard interface for DSI/USB-HDMI touch panels on Bookworm.
+         the standard interface for DSI/eDP panels.
          Sleep = bl_power FB_BLANK_POWERDOWN (4); wake = restore brightness.
-      2. xset dpms force off/on (X11 sessions).
-      3. vcgencmd display_power (legacy firmware path, pre-KMS).
-      4. fb0/blank (legacy framebuffer).
-    Failures are ignored so a dev machine just keeps the software dim.
+      2. DRM connector DPMS (/sys/class/drm/card*-*/dpms = On/Off): the KMS
+         path on Bookworm for HDMI panels without a backlight entry.
+      3. xset dpms force off/on (X11 sessions).
+      4. vcgencmd display_power (legacy firmware path, pre-KMS).
+      5. fb0/blank (legacy framebuffer).
+    Failures are logged and ignored so a dev machine keeps the software dim.
     """
     import glob
+    import logging
     import subprocess
+    log = logging.getLogger("midiplayer.screen")
 
     # --- 1. backlight sysfs ------------------------------------------------
     backlights = sorted(glob.glob("/sys/class/backlight/*"))
@@ -89,11 +93,20 @@ def _screen_power(on):
                 _sysfs_write(bright_path, val)
             else:
                 _sysfs_write(power_path, 4)      # FB_BLANK_POWERDOWN
+            log.info("scherm %s via backlight sysfs (%s)",
+                     "aan" if on else "uit", bl)
             return True
         except Exception:
             continue
 
-    # --- 2/3/4. subprocess fallbacks ----------------------------------------
+    # --- 2. DRM connector DPMS (KMS / Bookworm HDMI panels) ------------------
+    for path in sorted(glob.glob("/sys/class/drm/card*-*/dpms")):
+        if _sysfs_write(path, "On" if on else "Off"):
+            log.info("scherm %s via DRM dpms (%s)",
+                     "aan" if on else "uit", path)
+            return True
+
+    # --- 3/4/5. subprocess fallbacks ----------------------------------------
     onoff = "1" if on else "0"
     cmds = (
         ["xset", "dpms", "force", "on" if on else "off"],
@@ -105,9 +118,11 @@ def _screen_power(on):
         try:
             subprocess.run(cmd, check=True, timeout=3,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            log.info("scherm %s via %s", "aan" if on else "uit", cmd[0])
             return True
         except Exception:
             continue
+    log.warning("geen scherm-methode werkte (backlight noch DRM noch tools)")
     return False
 
 
