@@ -58,6 +58,147 @@ def _btn_font(pt):
     f = QFont(); f.setPointSize(pt); f.setBold(True); return f
 
 
+def _drm_set_power(on):
+    """Set display DPMS via the DRM property API (the KMS path on Bookworm).
+
+    The sysfs file /sys/class/drm/*/dpms is read-only by design, so the
+    property API (libdrm) is required. The DRM fd that Qt eglfs already
+    holds is reused via /proc/self/fd, so the app's DRM-master rights
+    apply and no sudo is needed. First the connector 'DPMS' property is
+    set (On=0/Off=3); if a card has no DPMS property, the crtc 'ACTIVE'
+    property (1/0) is tried.
+    """
+    import ctypes
+    import glob
+    import logging
+    import os
+    log = logging.getLogger("midiplayer.screen")
+
+    class Res(ctypes.Structure):
+        _fields_ = [("count_fbs", ctypes.c_int), ("fbs", ctypes.c_void_p),
+                    ("count_crtcs", ctypes.c_int),
+                    ("crtcs", ctypes.POINTER(ctypes.c_uint32)),
+                    ("count_connectors", ctypes.c_int),
+                    ("connectors", ctypes.POINTER(ctypes.c_uint32)),
+                    ("count_encoders", ctypes.c_int),
+                    ("encoders", ctypes.c_void_p),
+                    ("min_width", ctypes.c_uint32), ("max_width", ctypes.c_uint32),
+                    ("min_height", ctypes.c_uint32), ("max_height", ctypes.c_uint32),
+                    ("width", ctypes.c_int), ("height", ctypes.c_int)]
+
+    class PropList(ctypes.Structure):
+        _fields_ = [("count_props", ctypes.c_uint32), ("pad", ctypes.c_uint32),
+                    ("props", ctypes.POINTER(ctypes.c_uint64)),
+                    ("prop_values", ctypes.POINTER(ctypes.c_uint64))]
+
+    class Prop(ctypes.Structure):
+        _fields_ = [("prop_id", ctypes.c_uint32), ("type", ctypes.c_uint32),
+                    ("flags", ctypes.c_uint64), ("name", ctypes.c_char * 32),
+                    ("count_values", ctypes.c_int),
+                    ("values", ctypes.c_void_p),
+                    ("count_enums", ctypes.c_int), ("enums", ctypes.c_void_p),
+                    ("count_blobs", ctypes.c_int),
+                    ("blob_ids", ctypes.c_void_p)]
+
+    lib = None
+    for so in ("libdrm.so.2", "libdrm.so.1", "libdrm.so"):
+        try:
+            lib = ctypes.CDLL(so)
+            break
+        except OSError:
+            continue
+    if lib is None:
+        return False
+    lib.drmModeGetResources.restype = ctypes.POINTER(Res)
+    lib.drmModeObjectGetProperties.restype = ctypes.POINTER(PropList)
+    lib.drmModeGetProperty.restype = ctypes.POINTER(Prop)
+    lib.drmModeObjectSetProperty.argtypes = [
+        ctypes.c_int, ctypes.c_uint32, ctypes.c_uint32,
+        ctypes.c_uint32, ctypes.c_uint64]
+
+    CONNECTOR, CRTC = 0, 1
+
+    def set_prop(fd, obj_id, obj_type, want, value):
+        props = lib.drmModeObjectGetProperties(fd, obj_id, obj_type)
+        if not props:
+            return False
+        ok = False
+        try:
+            for i in range(props.contents.count_props):
+                prop_id = int(props.contents.props[i])
+                prop = lib.drmModeGetProperty(fd, prop_id)
+                if not prop:
+                    continue
+                try:
+                    if prop.contents.name.decode(errors="ignore") == want:
+                        rc = lib.drmModeObjectSetProperty(
+                            fd, obj_id, obj_type, prop_id, value)
+                        if rc == 0:
+                            ok = True
+                finally:
+                    lib.drmModeFreeProperty(prop)
+        finally:
+            lib.drmModeFreeObjectProperties(props)
+        return ok
+
+    def try_fd(fd):
+        res = lib.drmModeGetResources(fd)
+        if not res:
+            return False
+        try:
+            connectors = [int(res.contents.connectors[i])
+                          for i in range(res.contents.count_connectors)]
+            crtcs = [int(res.contents.crtcs[i])
+                     for i in range(res.contents.count_crtcs)]
+        finally:
+            lib.drmModeFreeResources(res)
+        ok = False
+        dpms = 0 if on else 3          # DRM_MODE_DPMS_ON / DRM_MODE_DPMS_OFF
+        for cid in connectors:
+            if set_prop(fd, cid, CONNECTOR, "DPMS", dpms):
+                ok = True
+        if not ok:
+            active = 1 if on else 0
+            for cid in crtcs:
+                if set_prop(fd, cid, CRTC, "ACTIVE", active):
+                    ok = True
+        return ok
+
+    fds = []
+    try:
+        for entry in os.listdir("/proc/self/fd"):
+            try:
+                target = os.readlink("/proc/self/fd/" + entry)
+                if target.startswith("/dev/dri/card"):
+                    fds.append(int(entry))
+            except (OSError, ValueError):
+                continue
+    except OSError:
+        pass
+    for fd in fds:
+        if try_fd(fd):
+            log.info("scherm %s via DRM dpms (hergebruikte fd %d)",
+                     "aan" if on else "uit", fd)
+            return True
+    for path in sorted(glob.glob("/dev/dri/card*")):
+        try:
+            fd = os.open(path, os.O_RDWR | os.O_CLOEXEC)
+        except OSError:
+            continue
+        try:
+            try:
+                lib.drmSetMaster(fd)
+            except Exception:
+                pass
+            if try_fd(fd):
+                log.info("scherm %s via DRM dpms (%s)",
+                         "aan" if on else "uit", path)
+                return True
+        finally:
+            os.close(fd)
+    return False
+
+
 def _screen_power(on):
     """Put the physical display to sleep / wake it (backlight off/on).
 
@@ -65,8 +206,11 @@ def _screen_power(on):
       1. backlight sysfs (/sys/class/backlight/*/bl_power and brightness):
          the standard interface for DSI/eDP panels.
          Sleep = bl_power FB_BLANK_POWERDOWN (4); wake = restore brightness.
-      2. DRM connector DPMS (/sys/class/drm/card*-*/dpms = On/Off): the KMS
-         path on Bookworm for HDMI panels without a backlight entry.
+      2. DRM object properties via libdrm (connector 'DPMS', else crtc
+         'ACTIVE'): the KMS path on Bookworm for HDMI panels. The sysfs file
+         /sys/class/drm/*/dpms is read-only by design, so this needs the
+         property API; the DRM fd Qt eglfs already holds is reused, so the
+         app's DRM-master status is enough (no sudo).
       3. xset dpms force off/on (X11 sessions).
       4. vcgencmd display_power (legacy firmware path, pre-KMS).
       5. fb0/blank (legacy framebuffer).
@@ -99,12 +243,9 @@ def _screen_power(on):
         except Exception:
             continue
 
-    # --- 2. DRM connector DPMS (KMS / Bookworm HDMI panels) ------------------
-    for path in sorted(glob.glob("/sys/class/drm/card*-*/dpms")):
-        if _sysfs_write(path, "On" if on else "Off"):
-            log.info("scherm %s via DRM dpms (%s)",
-                     "aan" if on else "uit", path)
-            return True
+    # --- 2. DRM object properties via libdrm (KMS / Bookworm HDMI panels) ----
+    if _drm_set_power(on):
+        return True
 
     # --- 3/4/5. subprocess fallbacks ----------------------------------------
     onoff = "1" if on else "0"
