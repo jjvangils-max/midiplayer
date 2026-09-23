@@ -59,25 +59,75 @@ def _btn_font(pt):
 
 
 def _screen_power(on):
-    """Put the physical display to sleep / wake it (DPMS-style).
+    """Put the physical display to sleep / wake it (backlight off/on).
 
-    On a Raspberry Pi with a touchscreen this drives the standard backlight/
-    blanking interface; failures are ignored so a dev machine just keeps the
-    software dim overlay behaviour.
+    Strategy (first that works wins):
+      1. backlight sysfs (/sys/class/backlight/*/bl_power and brightness):
+         the standard interface for DSI/USB-HDMI touch panels on Bookworm.
+         Sleep = bl_power FB_BLANK_POWERDOWN (4); wake = restore brightness.
+      2. xset dpms force off/on (X11 sessions).
+      3. vcgencmd display_power (legacy firmware path, pre-KMS).
+      4. fb0/blank (legacy framebuffer).
+    Failures are ignored so a dev machine just keeps the software dim.
     """
+    import glob
     import subprocess
+
+    # --- 1. backlight sysfs ------------------------------------------------
+    backlights = sorted(glob.glob("/sys/class/backlight/*"))
+    for bl in backlights:
+        try:
+            power_path = f"{bl}/bl_power"
+            bright_path = f"{bl}/brightness"
+            with open(f"{bl}/max_brightness") as f:
+                max_b = int(f.read().strip())
+            if on:
+                with open(bright_path) as f:
+                    cur = int(f.read().strip())
+                val = cur if cur > 0 else max_b
+                _sysfs_write(power_path, 0)      # FB_BLANK_UNBLANK
+                _sysfs_write(bright_path, val)
+            else:
+                _sysfs_write(power_path, 4)      # FB_BLANK_POWERDOWN
+            return True
+        except Exception:
+            continue
+
+    # --- 2/3/4. subprocess fallbacks ----------------------------------------
+    onoff = "1" if on else "0"
     cmds = (
-        ["vcgencmd", "display_power", "1" if on else "0"],
+        ["xset", "dpms", "force", "on" if on else "off"],
+        ["vcgencmd", "display_power", onoff],
         ["sudo", "-n", "sh", "-c",
-         f"echo {1 if on else 0} > /sys/class/graphics/fb0/blank"],
+         f"echo {onoff} > /sys/class/graphics/fb0/blank"],
     )
     for cmd in cmds:
         try:
             subprocess.run(cmd, check=True, timeout=3,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            return
+            return True
         except Exception:
             continue
+    return False
+
+
+def _sysfs_write(path, value):
+    """Write to a sysfs file, via sudo -n when the direct write is denied."""
+    try:
+        with open(path, "w") as f:
+            f.write(f"{value}\n")
+        return True
+    except PermissionError:
+        import subprocess
+        try:
+            subprocess.run(["sudo", "-n", "tee", path],
+                           input=f"{value}\n".encode(), check=True, timeout=3,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return True
+        except Exception:
+            return False
+    except Exception:
+        return False
 
 
 def _shutdown_pi():
