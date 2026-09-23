@@ -142,6 +142,7 @@ class MainWindow(QMainWindow):
         self._welcome_timer.setSingleShot(True)
         self._welcome_timer.timeout.connect(self._hide_welcome)
         # Insufficient-credit warning: big centered overlay, 5 s.
+        self._warmup_overlay = None
         self._credit_overlay = None
         self._credit_timer = QTimer(self)
         self._credit_timer.setSingleShot(True)
@@ -398,6 +399,10 @@ class MainWindow(QMainWindow):
     def _render_status(self):
         text = i18n.t(self._status_key, **self._status_kwargs)
         self.status_lbl.setText(text)
+        if self._status_key == "warmup":
+            self._show_warmup_overlay(self._status_kwargs.get("s"))
+        else:
+            self._hide_warmup_overlay()
 
     def update_now_playing(self, name):
         QMetaObject.invokeMethod(self, "_slot_now", Qt.QueuedConnection,
@@ -454,7 +459,8 @@ class MainWindow(QMainWindow):
 
     @Slot(bool)
     def _slot_playing(self, playing):
-        pass
+        # Any playback state change ends the warmup overlay.
+        self._hide_warmup_overlay()
 
     # ---- screen sleep / wake ------------------------------------------------
     def is_asleep(self):
@@ -565,6 +571,39 @@ class MainWindow(QMainWindow):
         if hw is not None and not hw.is_relay_on() \
                 and getattr(hw, "balance_cents", 0) <= 0:
             self._slot_screen_awake(False)
+
+    # ---- warmup overlay ------------------------------------------------
+    def _show_warmup_overlay(self, seconds):
+        if self._warmup_overlay is not None:
+            self._warmup_secs_lbl.setText(i18n.t("warmup_secs", s=int(seconds or 0)))
+            return
+        from PySide6.QtWidgets import QWidget as _W
+        overlay = _W(self)
+        overlay.setStyleSheet("background: rgba(0, 0, 0, 190);")
+        overlay.setGeometry(self.rect())
+        lay = QVBoxLayout(overlay)
+        lay.addStretch(1)
+        msg = QLabel(i18n.t("waiting_organ"))
+        msg.setStyleSheet("font-size: 40px; font-weight: bold; color: #ffd166;"
+                          "background: transparent;")
+        msg.setAlignment(Qt.AlignCenter)
+        msg.setWordWrap(True)
+        lay.addWidget(msg)
+        self._warmup_secs_lbl = QLabel("")
+        self._warmup_secs_lbl.setStyleSheet("font-size: 32px; color: #e8eef2;"
+                                             "background: transparent;")
+        self._warmup_secs_lbl.setAlignment(Qt.AlignCenter)
+        lay.addWidget(self._warmup_secs_lbl)
+        lay.addStretch(1)
+        overlay.show()
+        overlay.raise_()
+        self._warmup_overlay = overlay
+        self._warmup_secs_lbl.setText(i18n.t("warmup_secs", s=int(seconds or 0)))
+
+    def _hide_warmup_overlay(self):
+        if self._warmup_overlay is not None:
+            self._warmup_overlay.deleteLater()
+            self._warmup_overlay = None
 
     # ---- insufficient credit ------------------------------------------------
     def show_insufficient_credit(self, missing_cents):
