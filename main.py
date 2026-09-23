@@ -26,6 +26,10 @@ class Wiring:
         self.win = win
         self.sm = sm
         self.hw = hw
+        # Give the window direct access to hw/sm: _hide_welcome needs them to
+        # decide whether to sleep after the welcome overlay disappears.
+        self.win.hw = hw
+        self.win.sm = sm
         self._pending_usb = None
 
     # hardware signals
