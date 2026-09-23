@@ -341,6 +341,13 @@ class Hardware:
         self.signals.on_coin(balance)
         return charged
 
+    def missing_cents(self):
+        """How many euro cents are still needed for one song (0 = enough)."""
+        import settings
+        price = settings.get_song_price_cents()
+        with self._lock:
+            return max(0, price - self.balance_cents)
+
     def set_credits(self, cents):
         with self._lock:
             self.balance_cents = max(0, cents)

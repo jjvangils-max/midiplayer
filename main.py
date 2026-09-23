@@ -62,6 +62,8 @@ class Wiring:
         self.win.start_countdown(seconds)
     def on_song_progress(self, seconds):
         self.win.update_song_progress(seconds)
+    def on_insufficient_credit(self, missing_cents):
+        self.win.show_insufficient_credit(missing_cents)
 
     # usb signals
     def on_usb_inserted(self, mount_path):
@@ -105,6 +107,7 @@ def main():
         on_queue_change = wiring.on_queue_change
         on_song_length = wiring.on_song_length
         on_song_progress = wiring.on_song_progress
+        on_insufficient_credit = wiring.on_insufficient_credit
     sm = PlayerStateMachine(mp, hw, signals=_StateWiring())
     wiring.sm = sm
 

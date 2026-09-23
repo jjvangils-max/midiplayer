@@ -27,6 +27,7 @@ class StateSignals:
     def on_queue_change(self, queue): pass
     def on_song_length(self, seconds): pass
     def on_song_progress(self, seconds): pass
+    def on_insufficient_credit(self, missing_cents): pass
 
 
 STATE_IDLE = "idle"
@@ -82,7 +83,7 @@ class PlayerStateMachine(threading.Thread):
             return self.queue_next(song_path)
         with self._lock:
             if not self.hw.consume_credit():
-                self.signals.on_status("insert_coin")
+                self.signals.on_insufficient_credit(self.hw.missing_cents())
                 return False
             log.info("request_play: credits verbruikt, queue '%s'", song_path)
             self._queue.insert(0, song_path)
@@ -94,7 +95,7 @@ class PlayerStateMachine(threading.Thread):
         """Queue a song for playing. Consumes a credit (one song = one credit)."""
         with self._lock:
             if not self.hw.consume_credit():
-                self.signals.on_status("insert_coin")
+                self.signals.on_insufficient_credit(self.hw.missing_cents())
                 return False
             log.info("queue_next: credits verbruikt, queue '%s'", song_path)
             self._queue.append(song_path)
