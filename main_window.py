@@ -141,6 +141,11 @@ class MainWindow(QMainWindow):
         self._welcome_timer = QTimer(self)
         self._welcome_timer.setSingleShot(True)
         self._welcome_timer.timeout.connect(self._hide_welcome)
+        # Insufficient-credit warning: big centered overlay, 5 s.
+        self._credit_overlay = None
+        self._credit_timer = QTimer(self)
+        self._credit_timer.setSingleShot(True)
+        self._credit_timer.timeout.connect(self._hide_insufficient_credit)
         # Attract cycle: while idle/asleep, light the screen every
         # ATTRACT_INTERVAL for ATTRACT_DURATION with a coin invitation.
         self._attract_timer = QTimer(self)
@@ -560,6 +565,49 @@ class MainWindow(QMainWindow):
         if hw is not None and not hw.is_relay_on() \
                 and getattr(hw, "balance_cents", 0) <= 0:
             self._slot_screen_awake(False)
+
+    # ---- insufficient credit ------------------------------------------------
+    def show_insufficient_credit(self, missing_cents):
+        QMetaObject.invokeMethod(self, "_slot_insufficient_credit",
+                                 Qt.QueuedConnection, Q_ARG(int, int(missing_cents)))
+
+    @Slot(int)
+    def _slot_insufficient_credit(self, missing_cents):
+        if self._credit_overlay is not None:
+            self._credit_timer.stop()
+            self._credit_overlay.deleteLater()
+        from PySide6.QtWidgets import QWidget as _W
+        overlay = _W(self)
+        overlay.setStyleSheet("background: rgba(0, 0, 0, 190);")
+        overlay.setGeometry(self.rect())
+        lay = QVBoxLayout(overlay)
+        lay.addStretch(1)
+        msg = QLabel(i18n.t("insufficient_title"))
+        msg.setStyleSheet("font-size: 40px; font-weight: bold; color: #d93939;"
+                          "background: transparent;")
+        msg.setAlignment(Qt.AlignCenter)
+        msg.setWordWrap(True)
+        lay.addWidget(msg)
+        amount = f"{missing_cents / 100:.2f}"
+        if i18n.get_language() == "fr":
+            amount = amount.replace(".", ",")
+        sub = QLabel(i18n.t("insufficient_amount", amount=amount))
+        sub.setStyleSheet("font-size: 32px; font-weight: bold; color: #ffd166;"
+                          "background: transparent;")
+        sub.setAlignment(Qt.AlignCenter)
+        sub.setWordWrap(True)
+        lay.addWidget(sub)
+        lay.addStretch(1)
+        overlay.show()
+        overlay.raise_()
+        self._credit_overlay = overlay
+        self._credit_timer.start(5000)
+
+    @Slot()
+    def _hide_insufficient_credit(self):
+        if self._credit_overlay is not None:
+            self._credit_overlay.deleteLater()
+            self._credit_overlay = None
 
     # ---- attract cycle -------------------------------------------------------
     def _show_attract(self):
