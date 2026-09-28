@@ -511,9 +511,19 @@ class MainWindow(QMainWindow):
     def _slot_status_key(self):
         self._render_status()
 
+    def _sync_credit_status(self):
+        """insert_coin / select_song depending on the current balance."""
+        import settings
+        if self._last_balance_cents >= settings.get_song_price_cents():
+            self._status_key = "select_song"
+        else:
+            self._status_key = "insert_coin"
+
     def _render_status(self):
         text = i18n.t(self._status_key, **self._status_kwargs)
         self.status_lbl.setText(text)
+        if self._status_key in ("insert_coin", "select_song"):
+            self._sync_credit_status()
         if self._status_key == "warmup":
             self._show_warmup_overlay(self._status_kwargs.get("s"))
         else:
@@ -541,6 +551,15 @@ class MainWindow(QMainWindow):
         self._last_balance_cents = cents
         amount = f"{cents / 100:.2f}"
         self.balance_lbl.setText(i18n.t("balance", amount=amount))
+        # Enough credit to play: invite to pick a song instead of asking for
+        # a coin. Other states (playing, warmup, usb import, errors) win.
+        import settings
+        if self._status_key == "insert_coin":
+            if cents >= settings.get_song_price_cents():
+                self.set_status_key("select_song")
+        elif self._status_key == "select_song":
+            if cents < settings.get_song_price_cents():
+                self.set_status_key("insert_coin")
 
     @Slot(str)
     def _slot_status(self, text):
