@@ -166,36 +166,66 @@ _AdminSettingsDialog = None
 def _build_pin_dialog():
     Qt, QTimer, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, \
         QPushButton = _qt()[:8]
+    from PySide6.QtWidgets import QGridLayout
 
     class _Impl(QDialog):
         def __init__(self, parent=None):
             super().__init__(parent)
             self.setWindowTitle(i18n.t("admin_pin_title"))
             self.setModal(True)
-            self.resize(400, 220)
+            self.resize(460, 560)
             layout = QVBoxLayout(self)
             prompt = QLabel(i18n.t("admin_pin_prompt"))
             prompt.setStyleSheet("font-size: 20px;")
             layout.addWidget(prompt)
             self.entry = QLineEdit()
             self.entry.setEchoMode(QLineEdit.Password)
-            self.entry.setStyleSheet("font-size: 24px;")
+            self.entry.setStyleSheet("font-size: 28px;")
+            self.entry.setReadOnly(True)      # on-screen keypad is the input
+            self.entry.setFixedHeight(56)
+            self.entry.setAlignment(Qt.AlignCenter)
             self.entry.returnPressed.connect(self._check)
             layout.addWidget(self.entry)
             self.msg = QLabel("")
             self.msg.setStyleSheet("color: #d93939; font-size: 16px;")
+            self.msg.setAlignment(Qt.AlignCenter)
             layout.addWidget(self.msg)
-            buttons = QHBoxLayout()
-            ok = QPushButton(i18n.t("admin_save"))
-            ok.setStyleSheet("font-size: 18px;")
-            ok.clicked.connect(self._check)
+
+            # --- on-screen numeric keypad (touchscreen, no keyboard needed) ---
+            pad = QGridLayout()
+            pad.setSpacing(8)
+            key_style = "font-size: 26px; font-weight: bold; padding: 14px;"
+            keys = ("1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "OK")
+            for i, k in enumerate(keys):
+                r, c = divmod(i, 3)
+                b = QPushButton(k)
+                if k == "OK":
+                    b.setStyleSheet(key_style + " background: #1b7a3d;"
+                                     " border: 2px solid #39d98a; color: white;")
+                    b.clicked.connect(self._check)
+                elif k == "C":
+                    b.setStyleSheet(key_style + " background: #7a1b1b;"
+                                     " border: 2px solid #d93939; color: white;")
+                    b.clicked.connect(self._clear)
+                else:
+                    b.setStyleSheet(key_style)
+                    b.clicked.connect(lambda _, d=k: self._digit(d))
+                b.setFixedHeight(64)
+                pad.addWidget(b, r, c)
+            layout.addLayout(pad, 1)
+
             cancel = QPushButton(i18n.t("admin_close"))
             cancel.setStyleSheet("font-size: 18px;")
             cancel.clicked.connect(self.reject)
-            buttons.addWidget(ok)
-            buttons.addWidget(cancel)
-            layout.addLayout(buttons)
-            self.entry.setFocus()
+            layout.addWidget(cancel)
+
+        def _digit(self, d):
+            if len(self.entry.text()) < 8:
+                self.entry.setText(self.entry.text() + d)
+
+        def _clear(self):
+            self.entry.clear()
+            self.msg.setText("")
 
         def _check(self):
             if self.entry.text() == ADMIN_PIN:
