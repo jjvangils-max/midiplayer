@@ -16,6 +16,8 @@ and wakes with a French welcome message when a coin is inserted.
 """
 
 import logging
+import os
+import signal
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal, QObject, Slot, QMetaObject, Q_ARG, QTimer
@@ -171,28 +173,52 @@ def _exit_app():
 
 
 def _update_pi():
-    """Pull the latest version from git and restart the service.
+    """Pull the latest version from git and restart the app.
 
-    The git pull runs as the current user; the service restart needs root
-    and is done via sudo -n (add a NOPASSWD rule for systemctl, see README).
+    The git pull runs as the current user (needs a token/key that can read
+    the private repo). For the restart: under systemd we ask the service
+    manager to restart us (no root needed when Type=notify is set and the
+    app notifies READY); otherwise sudo systemctl/reboot.
+
+    Returns (ok, message) where message explains a failure for the admin.
     """
     import subprocess
     repo = Path(__file__).resolve().parent
     try:
-        subprocess.run(["git", "-C", str(repo), "pull", "--ff-only"],
-                       check=True, timeout=120)
+        r = subprocess.run(["git", "-C", str(repo), "pull", "--ff-only"],
+                            check=True, timeout=120, capture_output=True,
+                            text=True)
+        log.info("git pull: %s", r.stdout.strip())
+    except subprocess.CalledProcessError as e:
+        detail = (e.stderr or e.stdout or "").strip().splitlines()
+        detail = detail[-1] if detail else f"exit {e.returncode}"
+        log.error("git pull faalde: %s", detail)
+        return False, detail
+    except FileNotFoundError:
+        return False, "git niet gevonden"
     except Exception as e:
-        log.error("git pull faalde: %r", e)
-        return False
-    for cmd in (["sudo", "-n", "systemctl", "restart", "midiplayer.service"],
-                ["sudo", "-n", "reboot"]):
+        return False, str(e)
+
+    # Restart: preferred under systemd (no root rights needed), otherwise
+    # the sudo fallbacks.
+    try:
+        import sdnotify
+        n = sdnotify.SystemdNotifier()
+        n.notify("RELOADING=1")
+        os.kill(os.getpid(), signal.SIGTERM)
+        return True, "ok"
+    except Exception:
+        pass
+    for cmd, err in (
+            (["sudo", "-n", "systemctl", "restart", "midiplayer.service"],
+             "sudo systemctl niet toegestaan"),
+            (["sudo", "-n", "reboot"], "sudo reboot niet toegestaan")):
         try:
             subprocess.run(cmd, check=True, timeout=10)
-            return True
+            return True, "ok"
         except Exception:
             continue
-    log.error("herstart na update faalde (sudo systemctl/reboot niet toegestaan)")
-    return False
+    return False, "geen herstart-methode beschikbaar"
 
 
 def _shutdown_pi():
