@@ -36,7 +36,12 @@ class Wiring:
     def on_coin(self, balance_cents):
         self.win.update_balance(balance_cents)
     def on_relay(self, on):
-        self.win.set_status_key("relay_on" if on else "relay_off")
+        if on:
+            self.win.set_status_key("relay_on")
+        else:
+            # With the installation off, show what the visitor should do
+            # (insert more / choose a song) instead of a bare relay state.
+            self.win.sync_credit_status()
         self.win.set_screen_awake(on)
     def on_coin_value(self, cents):
         if not cents:

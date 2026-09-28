@@ -116,6 +116,15 @@ def _screen_power(on):
 
     # --- 3/4/5. subprocess fallbacks ----------------------------------------
     onoff = "1" if on else "0"
+    # Under X11, connect as the desktop user: a systemd service has no
+    # XAUTHORITY by default, so xset would silently fail and the panel
+    # backlight would stay on with only the software dim on top.
+    import os
+    xenv = None
+    if os.environ.get("DISPLAY") and not os.environ.get("XAUTHORITY"):
+        xauth = Path.home() / ".Xauthority"
+        if xauth.exists():
+            xenv = dict(os.environ, XAUTHORITY=str(xauth))
     cmds = (
         ["xset", "dpms", "force", "on" if on else "off"],
         ["vcgencmd", "display_power", onoff],
@@ -124,7 +133,7 @@ def _screen_power(on):
     )
     for cmd in cmds:
         try:
-            subprocess.run(cmd, check=True, timeout=3,
+            subprocess.run(cmd, check=True, timeout=3, env=xenv,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             log.info("%s: %s", " ".join(cmd), "on" if on else "off")
             return True
@@ -543,17 +552,28 @@ class MainWindow(QMainWindow):
         self._render_status()
 
     def _sync_credit_status(self):
-        """insert_coin / select_song depending on the current balance."""
+        """insert_more / select_song depending on the current balance."""
         import settings
-        if self._last_balance_cents >= settings.get_song_price_cents():
+        price = settings.get_song_price_cents()
+        if self._last_balance_cents >= price:
             self._status_key = "select_song"
+            self._status_kwargs = {}
+        elif self._last_balance_cents > 0:
+            missing = (price - self._last_balance_cents) / 100
+            if i18n.get_language() == "fr":
+                missing = f"{missing:.2f}".replace(".", ",")
+            else:
+                missing = f"{missing:.2f}"
+            self._status_key = "insert_more"
+            self._status_kwargs = {"amount": missing}
         else:
             self._status_key = "insert_coin"
+            self._status_kwargs = {}
 
     def _render_status(self):
         text = i18n.t(self._status_key, **self._status_kwargs)
         self.status_lbl.setText(text)
-        if self._status_key in ("insert_coin", "select_song"):
+        if self._status_key in ("insert_coin", "select_song", "insert_more"):
             self._sync_credit_status()
         if self._status_key == "warmup":
             self._show_warmup_overlay(self._status_kwargs.get("s"))
@@ -582,15 +602,12 @@ class MainWindow(QMainWindow):
         self._last_balance_cents = cents
         amount = f"{cents / 100:.2f}"
         self.balance_lbl.setText(i18n.t("balance", amount=amount))
-        # Enough credit to play: invite to pick a song instead of asking for
-        # a coin. Other states (playing, warmup, usb import, errors) win.
-        import settings
-        if self._status_key == "insert_coin":
-            if cents >= settings.get_song_price_cents():
-                self.set_status_key("select_song")
-        elif self._status_key == "select_song":
-            if cents < settings.get_song_price_cents():
-                self.set_status_key("insert_coin")
+        # Enough credit to play: invite to pick a song; partial credit:
+        # show how much is still missing. Other states (playing, warmup,
+        # usb import, errors) win.
+        if self._status_key in ("insert_coin", "select_song", "insert_more"):
+            self._sync_credit_status()
+            self._render_status()
 
     @Slot(str)
     def _slot_status(self, text):
@@ -649,6 +666,16 @@ class MainWindow(QMainWindow):
             self._attract_hide_timer.stop()
             self._hide_attract_overlay_only()
         self.show_welcome()
+
+    def sync_credit_status(self):
+        """Thread-safe: set the status bar to insert_coin/select_song."""
+        QMetaObject.invokeMethod(self, "_slot_sync_credit_status",
+                                 Qt.QueuedConnection)
+
+    @Slot()
+    def _slot_sync_credit_status(self):
+        self._sync_credit_status()
+        self._render_status()
 
     def set_screen_awake(self, awake):
         QMetaObject.invokeMethod(self, "_slot_screen_awake", Qt.QueuedConnection,
