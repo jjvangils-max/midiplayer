@@ -14,7 +14,7 @@ Environment=QT_QPA_EGLFS_PHYSICAL_HEIGHT=128
 Environment=QT_QPA_EGLFS_WIDTH=1024
 Environment=QT_QPA_EGLFS_HEIGHT=600
 Environment=XDG_RUNTIME_DIR=/run/user/1000
-ExecStart=/usr/bin/python3 /home/admin/midiplayer/main.py
+ExecStart=/home/admin/midiplayer-venv/bin/python /home/admin/midiplayer/main.py
 Restart=on-failure
 RestartSec=5
 
