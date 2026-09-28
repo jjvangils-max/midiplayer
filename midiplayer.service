@@ -8,11 +8,10 @@ Type=simple
 User=admin
 WorkingDirectory=/home/admin/midiplayer
 Environment=DISPLAY=:0
-Environment=QT_QPA_PLATFORM=eglfs
-Environment=QT_QPA_EGLFS_PHYSICAL_WIDTH=217
-Environment=QT_QPA_EGLFS_PHYSICAL_HEIGHT=128
-Environment=QT_QPA_EGLFS_WIDTH=1024
-Environment=QT_QPA_EGLFS_HEIGHT=600
+# Run inside the desktop session (X11). The kiosk was always started with
+# DISPLAY=:0; forcing eglfs conflicts with the running GUI (EGL 0x3000).
+Environment=QT_QPA_PLATFORM=xcb
+Environment=QT_X11_NO_MITSHM=1
 Environment=XDG_RUNTIME_DIR=/run/user/1000
 ExecStart=/home/admin/midiplayer-venv/bin/python /home/admin/midiplayer/main.py
 Restart=on-failure
