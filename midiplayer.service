@@ -15,7 +15,7 @@ Environment=QT_QPA_EGLFS_WIDTH=1024
 Environment=QT_QPA_EGLFS_HEIGHT=600
 Environment=XDG_RUNTIME_DIR=/run/user/1000
 ExecStart=/usr/bin/python3 /home/admin/midiplayer/main.py
-Restart=on-failure
+Restart=always
 RestartSec=5
 
 [Install]

@@ -178,8 +178,11 @@ screen off; a coin insert switches it back on with the welcome overlay.
 
 Hold the title for 5 s, enter the PIN, and use:
 
-- **Update from git**: runs `git pull --ff-only` in the app directory and then
-  `sudo systemctl restart midiplayer.service` (falls back to `sudo reboot`).
-- **Exit program**: stops the kiosk application (SIGTERM). With
-  `Restart=on-failure` in the unit, a clean exit stays down, so the screen
-  remains dark until the service is (re)started.
+- **Update from git**: runs `git pull --ff-only` in the app directory and
+  restarts. Under systemd the app exits cleanly and the unit
+  (`Restart=always`) starts the new code — no root rights needed. Outside
+  systemd it falls back to `sudo systemctl restart` / `sudo reboot`.
+- **Exit program**: stops the kiosk application (SIGTERM). The unit ships
+  with `Restart=always`, so the kiosk comes back after a few seconds
+  (`RestartSec`). To shut the kiosk down completely, use the
+  **Shut down the Raspberry Pi** button.

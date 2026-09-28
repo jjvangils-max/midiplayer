@@ -175,10 +175,10 @@ def _exit_app():
 def _update_pi():
     """Pull the latest version from git and restart the app.
 
-    The git pull runs as the current user (needs a token/key that can read
-    the private repo). For the restart: under systemd we ask the service
-    manager to restart us (no root needed when Type=notify is set and the
-    app notifies READY); otherwise sudo systemctl/reboot.
+    The git pull runs as the current user; the repo is public so no
+    credentials are needed. The restart is a clean exit(0): with
+    Restart=always in the unit, systemd starts the new code. Outside
+    systemd the sudo systemctl/reboot fallbacks are tried.
 
     Returns (ok, message) where message explains a failure for the admin.
     """
@@ -199,16 +199,12 @@ def _update_pi():
     except Exception as e:
         return False, str(e)
 
-    # Restart: preferred under systemd (no root rights needed), otherwise
-    # the sudo fallbacks.
-    try:
-        import sdnotify
-        n = sdnotify.SystemdNotifier()
-        n.notify("RELOADING=1")
-        os.kill(os.getpid(), signal.SIGTERM)
+    # Restart: a clean exit lets systemd (Restart=always) start the new
+    # code; outside systemd try the sudo fallbacks.
+    if os.environ.get("INVOCATION_ID"):
+        log.info("update klaar: herstart via systemd (clean exit)")
+        _exit_app()
         return True, "ok"
-    except Exception:
-        pass
     for cmd, err in (
             (["sudo", "-n", "systemctl", "restart", "midiplayer.service"],
              "sudo systemctl niet toegestaan"),

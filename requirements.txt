@@ -4,4 +4,3 @@ python-rtmidi>=1.4
 gpiozero>=2.0
 pyudev>=0.24
 pyserial>=3.5
-sdnotify
