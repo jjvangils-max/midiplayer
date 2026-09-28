@@ -300,12 +300,28 @@ def _build_settings_dialog():
             close_btn.clicked.connect(self.accept)
             layout.addWidget(close_btn)
 
+            bottom = QHBoxLayout()
             self.shutdown_btn = QPushButton(i18n.t("admin_shutdown"))
             self.shutdown_btn.setStyleSheet(
                 "font-size: 18px; background: #7a1b1b; border: 2px solid #d93939;"
                 "color: white;")
             self.shutdown_btn.clicked.connect(self._shutdown)
-            layout.addWidget(self.shutdown_btn)
+            bottom.addWidget(self.shutdown_btn)
+
+            self.update_btn = QPushButton(i18n.t("admin_update"))
+            self.update_btn.setStyleSheet(
+                "font-size: 18px; background: #1b5f7a; border: 2px solid #39a7d9;"
+                "color: white;")
+            self.update_btn.clicked.connect(self._self_update)
+            bottom.addWidget(self.update_btn)
+
+            self.quit_btn = QPushButton(i18n.t("admin_quit"))
+            self.quit_btn.setStyleSheet(
+                "font-size: 18px; background: #7a1b1b; border: 2px solid #d93939;"
+                "color: white;")
+            self.quit_btn.clicked.connect(self._quit_app)
+            bottom.addWidget(self.quit_btn)
+            layout.addLayout(bottom)
 
             self._reload()
 
@@ -378,6 +394,31 @@ def _build_settings_dialog():
                     self._reload()
                 except Exception as e:
                     QMessageBox.critical(self, i18n.t("admin_rename"), str(e))
+
+        def _self_update(self):
+            """git pull + systemctl restart midiplayer.service."""
+            import subprocess
+            from main_window import _update_pi
+            if QMessageBox.question(self, i18n.t("admin_update"),
+                                    i18n.t("admin_update_confirm")) \
+                    != QMessageBox.StandardButton.Yes:
+                return
+            self.status_lbl.setText(i18n.t("admin_update_running"))
+            if _update_pi():
+                self.status_lbl.setText(i18n.t("admin_update_started"))
+            else:
+                QMessageBox.critical(self, i18n.t("admin_update"),
+                                     i18n.t("admin_update_err"))
+
+        def _quit_app(self):
+            if QMessageBox.question(self, i18n.t("admin_quit"),
+                                    i18n.t("admin_quit_confirm")) \
+                    != QMessageBox.StandardButton.Yes:
+                return
+            from main_window import _exit_app
+            if not _exit_app():
+                QMessageBox.critical(self, i18n.t("admin_quit"),
+                                     i18n.t("admin_quit_err"))
 
         def _shutdown(self):
             if QMessageBox.question(self, i18n.t("admin_shutdown"),
