@@ -17,8 +17,14 @@ imports MIDI files from a USB stick, and switches EN/FR via flags.
 
 ## Requirements
 
-    sudo apt install libgl1 libegl1 libxkbcommon0
-    pip install -r requirements.txt
+    sudo apt install libgl1 libegl1 libxkbcommon0 python3-full
+    python3 -m venv /home/admin/midiplayer-venv
+    /home/admin/midiplayer-venv/bin/pip install -r requirements.txt
+
+The kiosk runs from the venv at `/home/admin/midiplayer-venv`
+(`ExecStart` in `midiplayer.service` points there). Bookworm's
+system Python is externally managed (PEP 668), so packages are
+installed in the venv, not system-wide.
 
 ## Configure
 
