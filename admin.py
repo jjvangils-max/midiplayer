@@ -321,6 +321,28 @@ def _build_settings_dialog():
             self.price_combo.setStyleSheet("font-size: 18px;")
             self.price_combo.currentIndexChanged.connect(self._on_price_changed)
             right.addWidget(self.price_combo)
+
+            warmup_lbl = QLabel(i18n.t("admin_warmup_time"))
+            warmup_lbl.setStyleSheet("font-size: 16px; color: #88a0b0;")
+            right.addWidget(warmup_lbl)
+            warmup_row = QHBoxLayout()
+            minus_btn = QPushButton("−")
+            minus_btn.setStyleSheet("font-size: 24px; padding: 6px 18px;")
+            plus_btn = QPushButton("+")
+            plus_btn.setStyleSheet("font-size: 24px; padding: 6px 18px;")
+            self.warmup_spin = QSpinBox()
+            self.warmup_spin.setRange(0, 600)
+            self.warmup_spin.setSuffix(" s")
+            self.warmup_spin.setValue(settings.get_warmup_time())
+            self.warmup_spin.setStyleSheet("font-size: 20px;")
+            self.warmup_spin.setFixedHeight(48)
+            minus_btn.clicked.connect(lambda: self._step_warmup(-5))
+            plus_btn.clicked.connect(lambda: self._step_warmup(+5))
+            self.warmup_spin.valueChanged.connect(self._on_warmup_changed)
+            warmup_row.addWidget(minus_btn)
+            warmup_row.addWidget(self.warmup_spin, 1)
+            warmup_row.addWidget(plus_btn)
+            right.addLayout(warmup_row)
             right.addStretch(1)
             body.addLayout(right, 1)
             layout.addLayout(body, 1)
@@ -354,6 +376,13 @@ def _build_settings_dialog():
             layout.addLayout(bottom)
 
             self._reload()
+
+        def _step_warmup(self, delta):
+            self.warmup_spin.setValue(self.warmup_spin.value() + delta)
+
+        def _on_warmup_changed(self, value):
+            settings.set_warmup_time(value)
+            self.status_lbl.setText(i18n.t("admin_saved"))
 
         def _on_price_changed(self, index):
             cents = self.price_combo.itemData(index)

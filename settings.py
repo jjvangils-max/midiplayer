@@ -42,3 +42,21 @@ def set_song_price_cents(cents):
         data = _read()
         data["song_price_cents"] = cents
         _write(data)
+
+
+# Organ warm-up (seconds); adjustable in the admin settings dialog.
+def get_warmup_time():
+    with _lock:
+        val = _read().get("warmup_time", config.WARMUP_TIME)
+    try:
+        val = int(val)
+    except (TypeError, ValueError):
+        return config.WARMUP_TIME
+    return max(0, min(600, val))
+
+
+def set_warmup_time(seconds):
+    with _lock:
+        data = _read()
+        data["warmup_time"] = seconds
+        _write(data)
