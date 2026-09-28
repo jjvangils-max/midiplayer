@@ -466,6 +466,9 @@ def _build_settings_dialog():
             ok, detail = _update_pi()
             if ok:
                 self.status_lbl.setText(i18n.t("admin_update_started"))
+                QMessageBox.information(
+                    self, i18n.t("admin_update"),
+                    i18n.t("admin_update_started") + f"\n\n{detail}")
             else:
                 QMessageBox.critical(
                     self, i18n.t("admin_update"),
