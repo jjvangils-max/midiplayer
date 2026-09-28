@@ -185,9 +185,11 @@ class PlayerStateMachine(threading.Thread):
     # ---- transitions ------------------------------------------------------
     def _begin_warmup_or_play(self):
         if not self.hw.is_relay_on():
-            log.info("relay uit -> warmup %ss", config.WARMUP_TIME)
+            import settings
+            warmup = settings.get_warmup_time()
+            log.info("relay uit -> warmup %ss", warmup)
             self.hw.relay_on()
-            self._warmup_until = time.time() + config.WARMUP_TIME
+            self._warmup_until = time.time() + warmup
             self._set_state(STATE_WARMUP)
         else:
             log.info("relay aan -> direct afspelen")
