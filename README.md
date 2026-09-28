@@ -144,3 +144,42 @@ Python shell to add 0.50 EUR and test coin logic if needed.
    3V3 pin current is fine for an optocoupler LED via its resistor — do not drive
    a relay coil directly from a GPIO.
 3. Confirm the exact ALSA port names with `aconnect -l` (defaults match this Pi).
+
+## Screen sleep (S2Pi 10.1" portable screen, HDMI)
+
+The kiosk runs under `eglfs` (no X server), so `xset dpms` never applies. For an
+HDMI panel there is usually no `/sys/class/backlight` node either. The app
+therefore writes the DRM connector dpms state directly:
+
+```
+/sys/class/drm/card1-HDMI-A-1/dpms   ->  "off"  (screen dark)
+                                     ->  "on"   (screen back)
+```
+
+The sleep strategy in `main_window.py` tries, in order: backlight sysfs,
+DRM connector dpms, `xset`, `vcgencmd display_power`, `fb0/blank`. Check which
+path works on your Pi:
+
+```
+grep -H . /sys/class/drm/card*-*/dpms /sys/class/drm/card*-*/status /sys/class/backlight/*/bl_power
+```
+
+The write may need root, so allow it for the kiosk user (`admin`):
+
+```
+echo 'admin ALL=(root) NOPASSWD: /usr/bin/tee /sys/class/drm/*/dpms, /usr/bin/systemctl restart midiplayer.service, /usr/bin/poweroff' | sudo tee /etc/sudoers.d/midiplayer
+sudo chmod 440 /etc/sudoers.d/midiplayer
+```
+
+When the relay switches off, the app dims to black and switches the physical
+screen off; a coin insert switches it back on with the welcome overlay.
+
+## Admin menu: update / exit
+
+Hold the title for 5 s, enter the PIN, and use:
+
+- **Update from git**: runs `git pull --ff-only` in the app directory and then
+  `sudo systemctl restart midiplayer.service` (falls back to `sudo reboot`).
+- **Exit program**: stops the kiosk application (SIGTERM). With
+  `Restart=on-failure` in the unit, a clean exit stays down, so the screen
+  remains dark until the service is (re)started.

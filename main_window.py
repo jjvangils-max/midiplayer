@@ -15,6 +15,7 @@ The screen dims to near-black when the installation powers down (relay off)
 and wakes with a French welcome message when a coin is inserted.
 """
 
+import logging
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal, QObject, Slot, QMetaObject, Q_ARG, QTimer
@@ -28,6 +29,8 @@ import config
 import i18n
 import midi_library
 
+
+log = logging.getLogger("midiplayer.screen")
 
 STYLE = """
 QWidget { background: #101820; color: #e8eef2; font-family: 'DejaVu Sans'; }
@@ -63,11 +66,15 @@ def _screen_power(on):
 
     Strategy (first that works wins):
       1. backlight sysfs (/sys/class/backlight/*/bl_power and brightness):
-         the standard interface for DSI/USB-HDMI touch panels on Bookworm.
+         the standard interface for DSI panels on Bookworm.
          Sleep = bl_power FB_BLANK_POWERDOWN (4); wake = restore brightness.
-      2. xset dpms force off/on (X11 sessions).
-      3. vcgencmd display_power (legacy firmware path, pre-KMS).
-      4. fb0/blank (legacy framebuffer).
+      2. DRM connector dpms sysfs (/sys/class/drm/card*-*/dpms): the KMS-way
+         for HDMI/USB-HDMI touch panels (e.g. the S2Pi 10.1" portable
+         screen) under eglfs/KMS, where no backlight node exists. Writing
+         'off' drops the HDMI output and the panel blanks itself.
+      3. xset dpms force off/on (X11 sessions).
+      4. vcgencmd display_power (legacy firmware path, pre-KMS).
+      5. fb0/blank (legacy framebuffer).
     Failures are ignored so a dev machine just keeps the software dim.
     """
     import glob
@@ -89,11 +96,23 @@ def _screen_power(on):
                 _sysfs_write(bright_path, val)
             else:
                 _sysfs_write(power_path, 4)      # FB_BLANK_POWERDOWN
+            log.info("backlight sysfs %s: %s", bl, "on" if on else "off")
             return True
         except Exception:
             continue
 
-    # --- 2/3/4. subprocess fallbacks ----------------------------------------
+    # --- 2. DRM connector dpms sysfs (KMS, eglfs) ---------------------------
+    connectors = sorted(glob.glob("/sys/class/drm/card*-*/dpms"))
+    for dpms in connectors:
+        try:
+            ok = _sysfs_write(dpms, "on" if on else "off")
+            if ok:
+                log.info("DRM dpms %s: %s", dpms, "on" if on else "off")
+                return True
+        except Exception:
+            continue
+
+    # --- 3/4/5. subprocess fallbacks ----------------------------------------
     onoff = "1" if on else "0"
     cmds = (
         ["xset", "dpms", "force", "on" if on else "off"],
@@ -105,9 +124,11 @@ def _screen_power(on):
         try:
             subprocess.run(cmd, check=True, timeout=3,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            log.info("%s: %s", " ".join(cmd), "on" if on else "off")
             return True
         except Exception:
             continue
+    log.warning("geen enkele scherm-uit methode werkte (on=%s)", on)
     return False
 
 
@@ -124,10 +145,54 @@ def _sysfs_write(path, value):
                            input=f"{value}\n".encode(), check=True, timeout=3,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return True
-        except Exception:
+        except Exception as e:
+            log.warning("sysfs schrijven faalde voor %s: %r", path, e)
             return False
-    except Exception:
+    except Exception as e:
+        log.warning("sysfs schrijven faalde voor %s: %r", path, e)
         return False
+
+
+def _exit_app():
+    """Stop the kiosk application (from the admin menu).
+
+    Under systemd (Restart=on-failure) a clean exit(0) stays down. When the
+    app is started manually, this exits the Qt event loop and the process.
+    """
+    import os
+    import signal
+    log.info("afsluiten aangevraagd via admin-menu")
+    try:
+        os.kill(os.getpid(), signal.SIGTERM)
+    except Exception as e:
+        log.error("exit faalde: %r", e)
+        return False
+    return True
+
+
+def _update_pi():
+    """Pull the latest version from git and restart the service.
+
+    The git pull runs as the current user; the service restart needs root
+    and is done via sudo -n (add a NOPASSWD rule for systemctl, see README).
+    """
+    import subprocess
+    repo = Path(__file__).resolve().parent
+    try:
+        subprocess.run(["git", "-C", str(repo), "pull", "--ff-only"],
+                       check=True, timeout=120)
+    except Exception as e:
+        log.error("git pull faalde: %r", e)
+        return False
+    for cmd in (["sudo", "-n", "systemctl", "restart", "midiplayer.service"],
+                ["sudo", "-n", "reboot"]):
+        try:
+            subprocess.run(cmd, check=True, timeout=10)
+            return True
+        except Exception:
+            continue
+    log.error("herstart na update faalde (sudo systemctl/reboot niet toegestaan)")
+    return False
 
 
 def _shutdown_pi():
