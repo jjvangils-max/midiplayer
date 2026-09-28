@@ -184,29 +184,46 @@ def _exit_app():
 def _update_pi():
     """Pull the latest version from git and restart the app.
 
-    The git pull runs as the current user (needs a token/key that can read
-    the private repo). For the restart: under systemd we ask the service
-    manager to restart us (no root needed when Type=notify is set and the
-    app notifies READY); otherwise sudo systemctl/reboot.
+    Local edits on the Pi are stashed first so the pull never aborts on
+    'Your local changes would be overwritten'. The pull output lists the
+    updated files; that list is shown to the admin.
 
-    Returns (ok, message) where message explains a failure for the admin.
+    Returns (ok, message) where message explains a failure or lists the
+    updated files for the admin.
     """
     import subprocess
+
+    def _git(*args):
+        return subprocess.run(["git", "-C", str(repo), *args],
+                              check=True, timeout=120, capture_output=True,
+                              text=True)
+
     repo = Path(__file__).resolve().parent
     try:
-        r = subprocess.run(["git", "-C", str(repo), "pull", "--ff-only"],
-                            check=True, timeout=120, capture_output=True,
-                            text=True)
+        _git("stash", "--include-untracked")
+    except subprocess.CalledProcessError:
+        pass          # nothing to stash or stash failed; try the pull anyway
+    except FileNotFoundError:
+        return False, "git niet gevonden"
+    try:
+        r = _git("pull", "--ff-only")
         log.info("git pull: %s", r.stdout.strip())
     except subprocess.CalledProcessError as e:
         detail = (e.stderr or e.stdout or "").strip().splitlines()
         detail = detail[-1] if detail else f"exit {e.returncode}"
         log.error("git pull faalde: %s", detail)
         return False, detail
-    except FileNotFoundError:
-        return False, "git niet gevonden"
     except Exception as e:
         return False, str(e)
+
+    # Which files changed? Show them so the admin sees the update is real.
+    files = []
+    try:
+        d = _git("diff", "--name-only", "HEAD@{1}", "HEAD")
+        files = [l.strip() for l in d.stdout.splitlines() if l.strip()]
+    except Exception:
+        pass
+    detail = "\n".join(files) if files else r.stdout.strip()
 
     # Restart: preferred under systemd (no root rights needed), otherwise
     # the sudo fallbacks.
@@ -215,7 +232,7 @@ def _update_pi():
         n = sdnotify.SystemdNotifier()
         n.notify("RELOADING=1")
         os.kill(os.getpid(), signal.SIGTERM)
-        return True, "ok"
+        return True, detail
     except Exception:
         pass
     for cmd, err in (
@@ -224,7 +241,7 @@ def _update_pi():
             (["sudo", "-n", "reboot"], "sudo reboot niet toegestaan")):
         try:
             subprocess.run(cmd, check=True, timeout=10)
-            return True, "ok"
+            return True, detail
         except Exception:
             continue
     return False, "geen herstart-methode beschikbaar"
