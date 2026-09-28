@@ -282,6 +282,11 @@ class MainWindow(QMainWindow):
         self._welcome_timer = QTimer(self)
         self._welcome_timer.setSingleShot(True)
         self._welcome_timer.timeout.connect(self._hide_welcome)
+        # After a start, stay on the main screen this long before sleeping.
+        self._start_awake_timer = QTimer(self)
+        self._start_awake_timer.setSingleShot(True)
+        self._start_awake_timer.timeout.connect(self._start_awake_expired)
+        self._start_awake_timer.start(config.START_AWAKE_TIME * 1000)
         # Insufficient-credit warning: big centered overlay, 5 s.
         self._warmup_overlay = None
         self._credit_overlay = None
@@ -721,16 +726,29 @@ class MainWindow(QMainWindow):
         self._welcome_timer.start(int(getattr(config, "WELCOME_TIME", 3)) * 1000)
 
     @Slot()
+    def _start_awake_expired(self):
+        """START_AWAKE_TIME passed: sleep when the relay is off, no credit
+        is left and nothing is playing; otherwise re-arm a short check."""
+        hw = getattr(self, "hw", None)
+        playing = self._countdown_active
+        if hw is not None and not hw.is_relay_on() \
+                and getattr(hw, "balance_cents", 0) <= 0 and not playing:
+            self._slot_screen_awake(False)
+        else:
+            self._start_awake_timer.start(60000)
+
     def _hide_welcome(self):
         if self._welcome_overlay is not None:
             self._welcome_overlay.deleteLater()
             self._welcome_overlay = None
-        # After the welcome: sleep again when the motor is off and no credit
-        # is left (e.g. at startup, or a wake without a usable coin).
-        hw = getattr(self, "hw", None)
-        if hw is not None and not hw.is_relay_on() \
-                and getattr(hw, "balance_cents", 0) <= 0:
-            self._slot_screen_awake(False)
+        # After the welcome at startup: stay on the main screen (the
+        # start-awake timer decides when to sleep). After a coin-less wake,
+        # sleep again immediately.
+        if not self._start_awake_timer.isActive():
+            hw = getattr(self, "hw", None)
+            if hw is not None and not hw.is_relay_on() \
+                    and getattr(hw, "balance_cents", 0) <= 0:
+                self._slot_screen_awake(False)
 
     # ---- warmup overlay ------------------------------------------------
     def _show_warmup_overlay(self, seconds):
