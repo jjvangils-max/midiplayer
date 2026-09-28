@@ -15,7 +15,7 @@ import hardware as hw_mod
 import midi_player
 import usb_import
 from player_state import PlayerStateMachine
-from main_window import MainWindow, build_app
+from main_window import MainWindow, build_app, _screen_power
 
 
 class Wiring:
@@ -82,6 +82,10 @@ class Wiring:
 
 def main():
     logging.basicConfig(level=logging.INFO, format="%(name)s: %(levelname)s: %(message)s")
+    # Switch the display on before Qt/eglfs grabs it: if the screen was put
+    # to sleep (DRM dpms off) before the restart, eglfs cannot create an EGL
+    # surface (error 0x3000) and the app would crash on startup.
+    _screen_power(True)
     i18n.set_language(config.DEFAULT_LANG)
     config.MIDI_DIR.mkdir(parents=True, exist_ok=True)
 
