@@ -434,11 +434,13 @@ def _build_settings_dialog():
                     != QMessageBox.StandardButton.Yes:
                 return
             self.status_lbl.setText(i18n.t("admin_update_running"))
-            if _update_pi():
+            ok, detail = _update_pi()
+            if ok:
                 self.status_lbl.setText(i18n.t("admin_update_started"))
             else:
-                QMessageBox.critical(self, i18n.t("admin_update"),
-                                     i18n.t("admin_update_err"))
+                QMessageBox.critical(
+                    self, i18n.t("admin_update"),
+                    i18n.t("admin_update_err") + f"\n\n{detail}")
 
         def _quit_app(self):
             if QMessageBox.question(self, i18n.t("admin_quit"),
